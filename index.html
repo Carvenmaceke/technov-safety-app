@@ -208,6 +208,7 @@ body{background:var(--surface)}
     <button data-act="helpers" data-v="0" aria-pressed="false">Nobody nearby</button>
   </div>
   <button class="btn danger" data-act="theft" style="margin-top:4px">Simulate theft &middot; SIM swap</button>
+  <button class="btn ghost" id="demoGuideBtn" data-act="go" data-v="demoinfo">Full demo guide</button>
 </div>
 
 <div class="pwa" id="pwaInstall" hidden>
@@ -782,6 +783,7 @@ const screens = {
            :`<div style="font-size:12px;color:var(--muted)">Sign in once on this phone to enable SOS without signing in.</div>`}
       <button class="btn" data-act="go" data-v="register">Create account</button>
       <button class="btn ghost" data-act="go" data-v="login">Sign in</button>
+      <button class="back" data-act="go" data-v="demoinfo" style="align-self:center">About this demo</button>
     </div>`;
   },
   register(){
@@ -1139,6 +1141,44 @@ const screens = {
       <div class="field"><textarea id="rp-text" rows="2" placeholder="Offer advice or support… anonymous" style="border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:10px;font:inherit;color:inherit;resize:vertical"></textarea></div>
       <button class="btn" type="submit">Reply anonymously</button>
     </form>`;
+  },
+  demoinfo(){
+    const back = S.session ? "home" : "welcome";
+    return `
+    <button class="back" data-act="go" data-v="${back}">‹ Back</button>
+    <h2>About this demo</h2>
+    <div class="notice"><b>Prototype</b> — TechNov was built for the FNB App of the Year Hackathon 2026. It runs entirely in your browser. No real emergency service, SMS, GPS, camera or Bluetooth is used; those are simulated and clearly labelled ${sim()}.</div>
+    <b style="font-family:var(--f-display)">Sign-in accounts</b>
+    <p class="lead" style="font-size:12.5px">The app routes you by role — a citizen lands in the phone app, staff land in their console.</p>
+    <div class="list">
+      <div class="item"><div style="min-width:0"><div class="t">User → phone app</div><div class="s" style="font-family:var(--f-mono)">lerato@demo.co.za · Safe@2026 · PIN 1357</div></div></div>
+      <div class="item"><div style="min-width:0"><div class="t">Admin → admin console</div><div class="s" style="font-family:var(--f-mono)">admin@technov.co.za · Admin@2026</div></div></div>
+      <div class="item"><div style="min-width:0"><div class="t">Responder → responder console</div><div class="s" style="font-family:var(--f-mono)">dispatch@er24.demo · Dispatch@2026</div></div></div>
+      <div class="item"><div style="min-width:0"><div class="t">DPO / auditor → auditor console</div><div class="s" style="font-family:var(--f-mono)">dpo@technov.co.za · Dpo@2026</div></div></div>
+      <div class="item"><div style="min-width:0"><div class="t">Counsellor → counsellor console</div><div class="s" style="font-family:var(--f-mono)">nomsa@tears.demo · Counsel@2026</div></div></div>
+    </div>
+    <b style="font-family:var(--f-display)">Things to try</b>
+    <div class="list">
+      <div class="item"><div><div class="t">Send an SOS</div><div class="s">Home → the SOS button. Cancel with PIN 1357.</div></div></div>
+      <div class="item"><div><div class="t">Duress PIN</div><div class="s">Enter 7531 (PIN reversed): it fakes a cancel while the alert stays active.</div></div></div>
+      <div class="item"><div><div class="t">Offline + helper network</div><div class="s">Demo panel → "No signal", press SOS. It encrypts and relays via nearby phones.</div></div></div>
+      <div class="item"><div><div class="t">Theft Lock</div><div class="s">Wrong cancel PIN 3×, or Demo → Simulate theft.</div></div></div>
+      <div class="item"><div><div class="t">Safe walk</div><div class="s">Start a short timer; if you don't check in, it auto-sends an SOS.</div></div></div>
+      <div class="item"><div><div class="t">Area safety</div><div class="s">"Simulate walking into a danger zone" to see the warning and recent cases.</div></div></div>
+      <div class="item"><div><div class="t">Disguise</div><div class="s">Fake call, or the decoy calculator — type the Safe PIN then = to return.</div></div></div>
+      <div class="item"><div><div class="t">Counsellors & community</div><div class="s">Reach out anonymously; post and reply on the board.</div></div></div>
+    </div>
+    <b style="font-family:var(--f-display)">Real security — runs in your browser</b>
+    <div class="list">
+      <div class="item"><div style="min-width:0"><div class="t">Passwords</div><div class="s">PBKDF2-SHA256, 100k iterations, per-user salt. 5 wrong = 60s lockout.</div></div><span class="tag ok">real</span></div>
+      <div class="item"><div style="min-width:0"><div class="t">Sessions</div><div class="s">256-bit token, auto sign-out after 3 min idle.</div></div><span class="tag ok">real</span></div>
+      <div class="item"><div style="min-width:0"><div class="t">Offline queue</div><div class="s">AES-256-GCM encrypted on the device.</div></div><span class="tag ok">real</span></div>
+      <div class="item"><div style="min-width:0"><div class="t">Access control</div><div class="s">Every call checks token, role and record owner.</div></div><span class="tag ok">real</span></div>
+      <div class="item"><div style="min-width:0"><div class="t">Evidence vault</div><div class="s">Write-once; no delete for any role.</div></div><span class="tag ok">real</span></div>
+    </div>
+    <b style="font-family:var(--f-display)">Simulated</b>
+    <p class="lead" style="font-size:12.5px">SMS, push, GPS, camera/recording, Bluetooth, the helper phones, email verification, danger-zone and recent-case data, and the fake-call ring — all labelled in the app. No real emergency service is ever contacted.</p>
+    <button class="btn ghost" data-act="go" data-v="${back}">Back</button>`;
   },
   consoleAdmin(){
     return consoleHead("Admin console", S.session.user, ["Manage user accounts (never their passwords)","Alert metadata — no location, no recordings","Open a recording only with a logged break-glass reason"]) + `
@@ -1810,6 +1850,7 @@ document.addEventListener("keydown", ()=>{ if(S.session){ const s=db.sessions[S.
   var fab=document.getElementById('demoFab'), sheet=document.getElementById('demoSheet');
   fab.addEventListener('click', function(){ sheet.hidden=false; fab.hidden=true; });
   document.getElementById('demoClose').addEventListener('click', function(){ sheet.hidden=true; fab.hidden=false; });
+  var dg=document.getElementById('demoGuideBtn'); if(dg) dg.addEventListener('click', function(){ sheet.hidden=true; fab.hidden=false; });
   if('serviceWorker' in navigator){ window.addEventListener('load', function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); }); }
 })();
 </script>

@@ -139,6 +139,9 @@ th{border-top:0;background:var(--surface-2);font-weight:500;color:var(--muted);t
 .cred{border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:12.5px;background:var(--surface-2)}
 .cred code{font-family:var(--f-mono);font-size:12px}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.lbl2{font-family:var(--f-display);font-weight:700;font-size:14px;margin-top:6px}
+.privs{border:1px solid var(--brand);border-radius:12px;padding:10px 12px;font-size:12.5px;background:color-mix(in srgb,var(--brand) 8%,transparent)}
+.privs ul{margin:6px 0 0;padding-left:18px}
 </style>
 <style>
 /* Full-screen phone-app shell (replaces the desktop split view) */
@@ -220,7 +223,7 @@ async function hashPassword(pw, saltHex){
 
 /* ---------- simulated backend + MySQL ---------- */
 const SESSION_IDLE_MS = 3*60*1000;
-const db = { users:[], contacts:[], alerts:[], sessions:{}, codes:{}, audit:[], evidence:[], nextId:1 };
+const db = { users:[], contacts:[], alerts:[], sessions:{}, codes:{}, audit:[], evidence:[], deletions:[], nextId:1 };
 
 function audit(actor, action, result, sql){
   db.audit.unshift({t:Date.now(), actor, action, result, sql});
@@ -400,6 +403,69 @@ const api = {
     audit("any caller","DELETE evidence attempted","deny","-- refused: evidence_frames has no DELETE grant for any role");
     throw new ApiError(403,"Evidence cannot be deleted. The table has no delete permission for any role, including admins.");
   },
+  async contactView(shareToken){
+    await sleep(150);
+    const a = db.alerts.find(x=>x.shareToken===shareToken);
+    if(!a){ audit("trusted contact (share link)","GET /share: unknown link","deny"); throw new ApiError(404,"This link is not valid."); }
+    if(a.status!=="active"){ audit("trusted contact (share link)",`GET /share/${a.id}: alert ${a.status}, link expired`,"deny","SELECT ref, lat, lng FROM alerts WHERE share_token = ? AND status = 'active'"); throw new ApiError(410,"This emergency is over. The shared link has expired."); }
+    const owner = db.users.find(u=>u.id===a.userId);
+    audit("trusted contact (share link)",`GET /share/${a.id}: scoped view — name, location, time only`,"allow","SELECT ref, activated_at, lat, lng, status FROM alerts WHERE share_token = ? AND status = 'active'");
+    return { alert:a.id, person:owner?owner.name:"TechNov user", status:a.status, activated:fmtDate(a.at), location:{lat:a.lat, lng:a.lng} };
+  },
+  async contactTriesAccount(shareToken){
+    audit("trusted contact (share link)","GET /alerts using a share link as a session token","deny");
+    await this._auth(shareToken);   // a share link is not a session → 401
+  },
+  async dpoLogin(){ return this._session(db.users.find(x=>x.role==="dpo"),"password").token; },
+  async dpoReadAudit(token){
+    const u = await this._auth(token);
+    if(u.role!=="dpo"){ audit(`user #${u.id}`,"GET /audit: not an auditor","deny"); throw new ApiError(403,"Auditors only"); }
+    audit(`dpo #${u.id}`,"GET /audit (read-only)","allow","SELECT actor, action, result, at FROM audit_log ORDER BY at DESC LIMIT 20");
+    return db.audit.slice(0,8).map(a=>({at:fmtTime(a.t), result:a.result, actor:a.actor, action:a.action}));
+  },
+  async responderLogin(){ return this._session(db.users.find(x=>x.role==="responder"),"password").token; },
+  async responderView(token, ref){
+    const u = await this._auth(token);
+    if(u.role!=="responder"){ audit(`user #${u.id}`,"GET /responder: not a responder","deny"); throw new ApiError(403,"Responders only"); }
+    const a = db.alerts.find(x=>x.id===ref);
+    const routed = !!(a && a.routedTo===u.id && a.status==="active");
+    audit(`responder #${u.id}`,`GET /responder/alerts/${ref}`, routed?"allow":"deny","SELECT lat, lng, status FROM alerts WHERE ref = ? AND routed_to = ? AND status = 'active'");
+    if(!routed) throw new ApiError(403,"This alert is not routed to you.");
+    return {alert:a.id, location:{lat:a.lat, lng:a.lng}, status:a.status};
+  },
+  async adminListUsers(token){
+    const u = await this._auth(token);
+    if(u.role!=="admin"){ audit(`user #${u.id}`,"GET /admin/users: not admin","deny"); throw new ApiError(403,"Admins only"); }
+    audit(`admin #${u.id}`,"GET /admin/users (no password hashes returned)","allow","SELECT id, full_name, email, role, email_verified, locked_until FROM users");
+    return db.users.map(x=>({id:x.id, name:x.name, email:x.email, role:x.role, verified:x.verified, locked:x.lockUntil>Date.now()}));
+  },
+  async responderQueue(token){
+    const u = await this._auth(token);
+    if(u.role!=="responder"){ audit(`user #${u.id}`,"GET /responder/queue: not a responder","deny"); throw new ApiError(403,"Responders only"); }
+    audit(`responder #${u.id}`,"GET /responder/queue","allow","SELECT ref, lat, lng, status FROM alerts WHERE routed_to = ? AND status = 'active'");
+    return db.alerts.filter(a=>a.routedTo===u.id && a.status==="active").map(a=>({ref:a.id, lat:a.lat, lng:a.lng, status:a.status}));
+  },
+  async responderRecording(token, ref, reason){
+    const u = await this._auth(token);
+    if(u.role!=="responder"){ throw new ApiError(403,"Responders only"); }
+    const a = db.alerts.find(x=>x.id===ref);
+    if(!a || a.routedTo!==u.id){ audit(`responder #${u.id}`,`recording ${ref}: not routed to them`,"deny"); throw new ApiError(403,"This alert is not routed to you."); }
+    if(!reason || reason.length<15){ audit(`responder #${u.id}`,`recording ${ref}: no justification`,"deny"); throw new ApiError(403,"Recordings need a written break-glass reason."); }
+    audit(`responder #${u.id}`,`BREAK-GLASS recording ${ref}. Reason: "${reason}"`,"warn","INSERT INTO privileged_access_log (actor_id, alert_ref, reason) VALUES (?, ?, ?)");
+    return {ref, recording:"(simulated) evidence reference, access expires in 15 min"};
+  },
+  async dpoPrivileged(token){
+    const u = await this._auth(token);
+    if(u.role!=="dpo"){ throw new ApiError(403,"Auditors only"); }
+    audit(`dpo #${u.id}`,"GET /privileged-access-log","allow","SELECT actor, alert_ref, reason, at FROM privileged_access_log ORDER BY at DESC");
+    return db.audit.filter(a=>/BREAK-GLASS/.test(a.action)).slice(0,10).map(a=>({at:fmtTime(a.t), actor:a.actor, action:a.action}));
+  },
+  async dpoDeletions(token){
+    const u = await this._auth(token);
+    if(u.role!=="dpo"){ throw new ApiError(403,"Auditors only"); }
+    audit(`dpo #${u.id}`,"GET /deletion-requests","allow","SELECT user_email, requested_at FROM deletion_requests ORDER BY requested_at DESC");
+    return db.deletions.map(d=>({email:d.email, at:fmtDate(d.at)}));
+  },
   async adminLogin(){
     const u = db.users.find(x=>x.role==="admin");
     const {hash} = await hashPassword("Admin@2026", u.salt);
@@ -414,7 +480,7 @@ const api = {
   },
   async adminRecording(token, ref, reason){
     const u = await this._auth(token);
-    if(u.role!=="admin") throw new ApiError(403,"Admins only");
+    if(u.role!=="admin"){ audit(`${u.role} #${u.id}`,`GET /recordings/${ref} denied: role '${u.role}' cannot open recordings (separation of duties)`,"deny"); throw new ApiError(403,"Your role cannot open recordings. Reading access logs and opening recordings are deliberately kept separate."); }
     if(!reason || reason.length<15){ audit(`admin #${u.id}`,`GET /admin/recordings/${ref} without justification`,"deny"); throw new ApiError(403,"Recordings need a written break-glass reason. Access refused and logged."); }
     audit(`admin #${u.id}`,`BREAK-GLASS recording ${ref}. Reason: "${reason}"`,"warn","INSERT INTO privileged_access_log (admin_id, alert_ref, reason) VALUES (?, ?, ?)");
     return {ref, recording:"(simulated) evidence file reference, access expires in 15 min"};
@@ -518,7 +584,7 @@ const S = {
   screen:"welcome", net:"online", session:null, inbox:null, pendingEmail:null,
   device:{configured:false, userId:null, key:null, contacts:[]},
   contacts:[], alerts:[], activeRef:null, emergencyMode:false,
-  err:{}, toast:null, sheet:null, pin:"", pinTries:0, confirmRemove:null, regPw:"", beacon:null, tamper:null
+  err:{}, toast:null, sheet:null, pin:"", pinTries:0, confirmRemove:null, regPw:"", beacon:null, tamper:null, bgRef:null, bgResult:null
 };
 let tamperTimer;
 function go(screen){ S.screen = screen; S.err = {}; S.sheet = null; render(); $("screen").scrollTop = 0; }
@@ -782,8 +848,45 @@ const screens = {
     </div>
     <button class="btn ghost" data-act="deleteReq">Request account deletion</button>
     <button class="btn" data-act="logout">Sign out</button>`;
+  },
+  consoleAdmin(){
+    return consoleHead("Admin console", S.session.user, ["Manage user accounts (never their passwords)","Alert metadata — no location, no recordings","Open a recording only with a logged break-glass reason"]) + `
+    <div class="lbl2">Users</div>
+    <div class="tbl" id="cons-users"><table><tbody><tr><td>Loading…</td></tr></tbody></table></div>
+    <div class="lbl2">Alerts</div>
+    <div class="list" id="cons-alerts"><div class="item"><span class="s">Loading…</span></div></div>
+    ${bgResultHTML()}
+    <button class="btn" data-act="logout">Sign out</button>`;
+  },
+  consoleResponder(){
+    return consoleHead("Responder console", S.session.user, ["Only the alerts dispatched to you, while they are active","Live location for those alerts","Open a recording only with a logged break-glass reason"]) + `
+    <div class="lbl2">Alerts routed to you</div>
+    <div class="list" id="cons-routed"><div class="item"><span class="s">Loading…</span></div></div>
+    ${bgResultHTML()}
+    <button class="btn" data-act="logout">Sign out</button>`;
+  },
+  consoleDpo(){
+    return consoleHead("DPO / auditor console", S.session.user, ["Read the audit and privileged-access logs","Handle data-deletion requests","Cannot open recordings — separation of duties"]) + `
+    <div class="lbl2">Privileged-access log (break-glass events)</div>
+    <div class="log" id="cons-priv" style="max-height:150px"><div class="l">Loading…</div></div>
+    <div class="lbl2">Audit log (recent)</div>
+    <div class="log" id="cons-audit" style="max-height:200px"><div class="l">Loading…</div></div>
+    <div class="lbl2">Deletion requests</div>
+    <div class="list" id="cons-del"><div class="item"><span class="s">Loading…</span></div></div>
+    <button class="btn" data-act="logout">Sign out</button>`;
   }
 };
+
+function consoleHead(title, u, privs){
+  return `
+  <div class="status-head" style="background:var(--brand);color:var(--brand-ink)">
+    <span class="ref">Backend console</span>
+    <b>${esc(title)}</b>
+    <span style="font-size:12.5px">${esc(u.name)} · ${esc(u.email)} · role: <b>${esc(u.role)}</b></span>
+  </div>
+  <div class="privs"><b>What this role can do</b><ul>${privs.map(p=>`<li>${esc(p)}</li>`).join("")}</ul></div>`;
+}
+function bgResultHTML(){ return S.bgResult ? `<div class="result">${esc(S.bgResult)}</div>` : ""; }
 
 function mapSVG(){
   return `<svg viewBox="0 0 360 180" role="img" aria-label="Sample map">
@@ -826,6 +929,16 @@ function sheetHTML(){
         <button data-act="pinClose">Close</button><button data-act="pin" data-v="0">0</button><button data-act="pinDel">⌫</button></div>
     </div></div>`;
   }
+  if(S.sheet==="bg"){
+    return `<div class="overlay"><div class="sheet" role="dialog" aria-label="Break-glass access">
+      <b style="font-family:var(--f-display);font-size:18px">Break-glass: open recording</b>
+      <p style="margin:0;color:var(--muted);font-size:13px">This is written to the privileged-access log with your name and reason. Minimum 15 characters.</p>
+      <textarea id="bg-reason" rows="3" style="border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:10px;font:inherit;color:inherit;resize:vertical" placeholder="e.g. SAPS case 1182/10/2026, approved by DPO"></textarea>
+      ${errLine("bg")}
+      <button class="btn danger" data-act="submitBG">Open recording (logged)</button>
+      <button class="btn ghost" data-act="pinClose">Cancel</button>
+    </div></div>`;
+  }
   if(S.sheet==="bio"){
     return `<div class="overlay"><div class="sheet" role="dialog" aria-label="Biometric prompt">
       <b style="font-family:var(--f-display);font-size:18px">Phone fingerprint prompt ${sim()}</b>
@@ -849,6 +962,34 @@ function render(){
   const n = {online:["","Online"],cell:["cell","No data · SMS"],none:["none","No signal"]}[S.net];
   $("netbar").innerHTML = `<span class="dot ${n[0]}"></span>${n[1]}`;
   if(S.screen==="history") loadHistory();
+  if(S.screen && S.screen.indexOf("console")===0) loadConsole();
+}
+
+async function loadConsole(){
+  if(loadConsole.busy || !S.session) return; loadConsole.busy = true;
+  try{
+    const role = S.session.user.role, t = S.session.token;
+    if(role==="admin"){
+      const [users, alerts] = [await api.adminListUsers(t), await api.adminListAlerts(t)];
+      const ub = $("cons-users");
+      if(ub) ub.innerHTML = `<table><thead><tr><th>id</th><th>name</th><th>email</th><th>role</th><th>verified</th><th>status</th></tr></thead><tbody>${users.map(x=>`<tr><td>${x.id}</td><td>${esc(x.name)}</td><td>${esc(x.email)}</td><td>${x.role}</td><td>${x.verified?"yes":"no"}</td><td>${x.locked?"locked":"active"}</td></tr>`).join("")}</tbody></table>`;
+      const ab = $("cons-alerts");
+      if(ab) ab.innerHTML = alerts.length ? alerts.map(a=>`<div class="item"><div style="min-width:0"><div class="t" style="font-family:var(--f-mono);font-size:12.5px">${esc(a.ref)}</div><div class="s">${esc(a.activated)} · ${esc(a.status)}</div></div><button class="btn ghost" style="padding:7px 10px" data-act="askBG" data-v="${esc(a.ref)}">Recording</button></div>`).join("") : `<div class="item"><span class="s">No alerts.</span></div>`;
+    } else if(role==="responder"){
+      const rows = await api.responderQueue(t);
+      const rb = $("cons-routed");
+      if(rb) rb.innerHTML = rows.length ? rows.map(a=>`<div class="item"><div style="min-width:0"><div class="t" style="font-family:var(--f-mono);font-size:12.5px">${esc(a.ref)}</div><div class="s">${a.lat.toFixed(4)}, ${a.lng.toFixed(4)} · ${esc(a.status)}</div></div><button class="btn ghost" style="padding:7px 10px" data-act="askBG" data-v="${esc(a.ref)}">Recording</button></div>`).join("") : `<div class="item"><span class="s">No active alerts are routed to you right now.</span></div>`;
+    } else if(role==="dpo"){
+      const [audit0, priv, dels] = [await api.dpoReadAudit(t), await api.dpoPrivileged(t), await api.dpoDeletions(t)];
+      const pb = $("cons-priv");
+      if(pb) pb.innerHTML = priv.length ? priv.map(a=>`<div class="l"><span class="warnc">${a.at}</span>  ${esc(a.actor)} · ${esc(a.action)}</div>`).join("") : `<div class="l">No break-glass events yet.</div>`;
+      const ab = $("cons-audit");
+      if(ab) ab.innerHTML = audit0.map(a=>`<div class="l"><span class="${a.result==="deny"?"deny":a.result==="warn"?"warnc":"allow"}">${a.result.toUpperCase()}</span> ${a.at}  ${esc(a.actor)} · ${esc(a.action)}</div>`).join("");
+      const db2 = $("cons-del");
+      if(db2) db2.innerHTML = dels.length ? dels.map(d=>`<div class="item"><div class="s">${esc(d.email)} · requested ${esc(d.at)}</div><span class="tag warn">pending</span></div>`).join("") : `<div class="item"><span class="s">No deletion requests.</span></div>`;
+    }
+  }catch(e){ if(e.status===401) return expire(); }
+  finally{ loadConsole.busy = false; }
 }
 
 async function loadHistory(){
@@ -973,8 +1114,18 @@ const actions = {
     try{ await api.removeContact(S.session.token, d.v); S.contacts = S.contacts.filter(c=>c.id!==d.v); S.device.contacts = S.contacts.map(x=>({...x})); S.confirmRemove=null; toast("Contact removed."); }
     catch(e){ if(e.status===401) expire(); }
   },
-  deleteReq(){ audit(`user #${S.session.user.id}`,"POST /account/deletion-request","allow","INSERT INTO deletion_requests (user_id, requested_at) VALUES (?, ?)"); toast("Deletion request received. We'll confirm by email within 30 days."); },
-  async logout(){ await api.logout(S.session.token); S.session=null; S.contacts=[]; go("welcome"); toast("Signed out. Emergency SOS still works from this screen."); renderInspector(); },
+  deleteReq(){ db.deletions.push({email:S.session.user.email, at:Date.now()}); audit(`user #${S.session.user.id}`,"POST /account/deletion-request","allow","INSERT INTO deletion_requests (user_id, requested_at) VALUES (?, ?)"); toast("Deletion request received. We'll confirm by email within 30 days."); },
+  askBG(d){ S.bgRef = d.v; S.err = {}; S.sheet = "bg"; render(); },
+  async submitBG(){
+    const reason = ($("bg-reason")?.value || "").trim();
+    const role = S.session.user.role, ref = S.bgRef;
+    try{
+      const r = role==="responder" ? await api.responderRecording(S.session.token, ref, reason) : await api.adminRecording(S.session.token, ref, reason);
+      S.sheet = null; S.bgResult = `Recording ${ref} opened — ${r.recording}\nWritten to the privileged-access log with your reason.`;
+      render(); toast("Recording opened. Access logged.");
+    }catch(e){ if(e.status===401) return expire(); S.err.bg = e.message; render(); }
+  },
+  async logout(){ await api.logout(S.session.token); const wasStaff=S.session.user.role!=="user"; S.session=null; S.contacts=[]; S.bgResult=null; go("welcome"); toast(wasStaff?"Signed out of the console.":"Signed out. Emergency SOS still works from this screen."); renderInspector(); },
 
   async t1(){
     const out = $("testout");
@@ -1001,6 +1152,37 @@ const actions = {
     const r = await api.adminRecording(t, THANDI_REF, "SAPS case 1182/10/2026 evidence request, approved by DPO");
     await api.logout(t);
     $("testout").textContent = `GET /api/admin/recordings/${THANDI_REF}\nX-Access-Reason: SAPS case 1182/10/2026 evidence request, approved by DPO\n\n→ 200 OK\n${JSON.stringify(r,null,2)}\n\nThe access is written to the privileged-access log (see audit log).`;
+  },
+  async t6(){
+    const r = await api.contactView(SHARE_ACTIVE);
+    $("testout").textContent = `GET /share/${SHARE_ACTIVE}  (trusted-contact link, no login)\n\n→ 200 OK, scoped view\n${JSON.stringify(r,null,2)}\n\nName, location and time only. No history, no contacts, no recordings.`;
+  },
+  async t7(){
+    try{ await api.contactTriesAccount(SHARE_ACTIVE); }
+    catch(e){ $("testout").textContent = `GET /api/alerts  (share link used as a session token)\n\n→ ${e.status} Unauthorized\n"${e.message}"\n\nA share link is not an account. It cannot reach history or any other alert.`; }
+  },
+  async t8(){
+    try{ await api.contactView(SHARE_DONE); }
+    catch(e){ $("testout").textContent = `GET /share/${SHARE_DONE}  (link to a resolved alert)\n\n→ ${e.status} ${e.status===410?"Gone":""}\n"${e.message}"\n\nContact access is time-boxed: it ends when the emergency does.`; }
+  },
+  async t9(){
+    const t = await api.dpoLogin();
+    const rows = await api.dpoReadAudit(t); await api.logout(t);
+    $("testout").textContent = `GET /api/audit  (role: DPO / auditor)\n\n→ 200 OK, read-only\n${JSON.stringify(rows,null,2)}`;
+  },
+  async t10(){
+    const t = await api.dpoLogin();
+    try{ await api.adminRecording(t, THANDI_REF, "DPO wants to look"); }
+    catch(e){ $("testout").textContent = `GET /api/recordings/${THANDI_REF}  (role: DPO)\n\n→ ${e.status} Forbidden\n"${e.message}"\n\nThe DPO can read who accessed what, but cannot open recordings. Separation of duties.`; }
+    await api.logout(t);
+  },
+  async t11(){
+    const t = await api.responderLogin();
+    const ok = await api.responderView(t, ACTIVE_REF);
+    let deny = "";
+    try{ await api.responderView(t, THANDI_REF); }catch(e){ deny = `${e.status} "${e.message}"`; }
+    await api.logout(t);
+    $("testout").textContent = `Responder — alert ROUTED to them (${ACTIVE_REF}):\n→ 200 OK  ${JSON.stringify(ok.location)}\n\nSame responder — alert NOT routed to them (${THANDI_REF}):\n→ ${deny}\n\nResponders see only the alerts dispatched to them, while active.`;
   }
 };
 
@@ -1091,7 +1273,14 @@ function rotateBeacon(u){
   audit(`user #${u.id}`,"Bluetooth beacon ID rotated","allow","UPDATE beacon_ids SET current_id = ?, previous_id = current_id WHERE user_id = ?");
 }
 async function afterLogin(r){
-  S.session = r; S.err = {};
+  S.session = r; S.err = {}; S.bgResult = null;
+  if(r.user.role!=="user"){
+    // Staff accounts are routed into their backend console, with only their role's privileges.
+    S.contacts = [];
+    go(r.user.role==="admin" ? "consoleAdmin" : r.user.role==="responder" ? "consoleResponder" : "consoleDpo");
+    renderInspector();
+    return;
+  }
   if(!S.device.key) S.device.key = hex(rand(16));
   const u = db.users.find(x=>x.id===r.user.id);
   if(!u.deviceKey) u.deviceKey = S.device.key;
@@ -1157,6 +1346,8 @@ document.addEventListener("submit", async e=>{
 
 /* ---------- seed & timers ---------- */
 let THANDI_REF = "TN-20261024-4821";
+let ACTIVE_REF = "TN-20261026-1007";
+const SHARE_ACTIVE = "SHARE-7F3A", SHARE_DONE = "SHARE-DONE-22";
 (async function init(){
   render();
   deviceKeyAES = await crypto.subtle.generateKey({name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
@@ -1164,9 +1355,12 @@ let THANDI_REF = "TN-20261024-4821";
   const lerato = await mk("Lerato Mokoena","lerato@demo.co.za","Safe@2026","user","1357");
   const thandi = await mk("Thandi Ndlovu","thandi@demo.co.za","Thandi#2026","user","2468");
   await mk("TechNov Admin","admin@technov.co.za","Admin@2026","admin","9021");
+  const responder = await mk("ER24 Dispatcher","dispatch@er24.demo","Dispatch@2026","responder","1122");
+  await mk("Data Protection Officer","dpo@technov.co.za","Dpo@2026","dpo","3344");
   db.contacts.push({id:"c90",userId:lerato.id,name:"Nomsa (Mom)",phone:"0721234567",relationship:"Mother",method:"SMS",alerts:true});
   db.contacts.push({id:"c91",userId:lerato.id,name:"Sipho",phone:"0839876543",relationship:"Brother",method:"Push",alerts:true});
-  db.alerts.push({id:THANDI_REF, userId:thandi.id, at:new Date("2026-10-24T21:14:00+02:00").getTime(), status:"cancelled", lat:-25.7536, lng:28.2311});
+  db.alerts.push({id:THANDI_REF, userId:thandi.id, at:new Date("2026-10-24T21:14:00+02:00").getTime(), status:"cancelled", lat:-25.7536, lng:28.2311, shareToken:SHARE_DONE});
+  db.alerts.push({id:ACTIVE_REF, userId:lerato.id, at:Date.now()-5*60000, status:"active", lat:-25.7461, lng:28.1881, shareToken:SHARE_ACTIVE, routedTo:responder.id});
   audit("system","Seeded demo accounts (passwords hashed at startup)","allow");
   spawnHelpers();
   render();

@@ -704,6 +704,13 @@ function startRing(){
 function stopRing(){ clearInterval(ringTimer); try{ navigator.vibrate && navigator.vibrate(0); }catch(_){} }
 function handleGen(){ const a=["Brave","Kind","Quiet","Hopeful","Strong","Gentle","Caring","Steady"]; const n=["Protea","Springbok","Aloe","Jacaranda","Impala","Kudu","Sunbird","Marula"]; return a[Math.floor(Math.random()*a.length)]+" "+n[Math.floor(Math.random()*n.length)]; }
 function timeAgo(t){ const s=Math.floor((Date.now()-t)/1000); if(s<60) return "just now"; const m=Math.floor(s/60); if(m<60) return m+" min ago"; const h=Math.floor(m/60); if(h<24) return h+" h ago"; const d=Math.floor(h/24); return d+" day"+(d>1?"s":"")+" ago"; }
+const DEMO_ACCOUNTS = [
+  {label:"User", email:"lerato@demo.co.za", pw:"Safe@2026"},
+  {label:"Admin", email:"admin@technov.co.za", pw:"Admin@2026"},
+  {label:"Responder", email:"dispatch@er24.demo", pw:"Dispatch@2026"},
+  {label:"DPO", email:"dpo@technov.co.za", pw:"Dpo@2026"},
+  {label:"Counsellor", email:"nomsa@tears.demo", pw:"Counsel@2026"}
+];
 function startFakeCall(delay){
   const names=["Mom","Dad","Thabo","Aunty","Boss","Unknown"]; const name=names[Math.floor(Math.random()*names.length)];
   clearTimeout(fakeTimer);
@@ -833,6 +840,10 @@ const screens = {
       <button class="btn ghost" type="button" data-act="forgot">Forgot password?</button>
       ${bio?`<button class="btn ghost" type="button" data-act="bio">Sign in with fingerprint ${sim()}</button>`:""}
     </form>
+    <div style="margin-top:2px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Demo accounts — tap to sign in</div>
+      <div class="seg">${DEMO_ACCOUNTS.map(a=>`<button type="button" data-act="quicklogin" data-v="${a.email}">${esc(a.label)}</button>`).join("")}</div>
+    </div>
     ${S.err.forgot?`<div class="notice">${esc(S.err.forgot)}</div>`:""}`;
   },
   home(){
@@ -1501,6 +1512,12 @@ const actions = {
     catch(e){ S.err.verify = e.message; render(); }
   },
   forgot(){ S.err.forgot = "If an account exists for that email, we'll send a reset link. (Simulated: no email is sent in this demo.)"; render(); },
+  async quicklogin(d){
+    const acc = DEMO_ACCOUNTS.find(a=>a.email===d.v); if(!acc) return;
+    S.err = {};
+    try{ const r = await api.login(acc.email, acc.pw); await afterLogin(r); }
+    catch(e){ S.err.login = e.message; render(); }
+  },
   bio(){ S.sheet="bio"; render(); },
   async bioOk(){
     S.sheet=null;

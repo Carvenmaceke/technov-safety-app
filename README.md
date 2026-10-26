@@ -4,8 +4,10 @@ A clickable prototype of **TechNov**, a personal-safety app that lets a person i
 
 Built for the **FNB App of the Year Hackathon 2026**.
 
-> **Live demo:** open `index.html` in a browser, or view the published version.
-> It is a self-contained HTML file — no build step, no server, no dependencies to install.
+> **Live demo (installable):** https://carvenmaceke.github.io/technov-safety-app/
+> It is web-based, but it is a **Progressive Web App** — on a phone, open the link and choose **Add to Home Screen** (Android shows an install prompt after you log in). It then opens full-screen with its own icon and works offline, like a downloaded app. A native build can follow later.
+
+On a phone the app fills the screen like a normal app. The offline / helper-network / theft demos are in a **Demo** button at the bottom-right. (A separate split-screen "Security Inspector" view, used to show judges what the backend and database do, lives in the chat prototype.)
 
 ---
 

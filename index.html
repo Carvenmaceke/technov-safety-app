@@ -778,9 +778,9 @@ const screens = {
     <h2>Help, one press away.</h2>
     <p class="lead">Send an SOS with your location to the people you trust, even when you can't unlock your phone and dial.</p>
     <div class="stack" style="margin-top:auto">
-      <button class="btn danger" data-act="emergency" ${can?"":"disabled"}>Emergency SOS, no sign-in</button>
+      <button class="btn danger" data-act="emergency">Emergency SOS, no sign-in</button>
       ${can?`<div class="hint" style="font-size:12px;color:var(--muted)">Uses the contacts already set up on this phone. Your account and history stay locked.</div>`
-           :`<div style="font-size:12px;color:var(--muted)">Sign in once on this phone to enable SOS without signing in.</div>`}
+           :`<div style="font-size:12px;color:var(--muted)">Works right away. To make sure your alert reaches someone, sign in once and add trusted contacts.</div>`}
       <button class="btn" data-act="go" data-v="register">Create account</button>
       <button class="btn ghost" data-act="go" data-v="login">Sign in</button>
       <button class="back" data-act="go" data-v="demoinfo" style="align-self:center">About this demo</button>

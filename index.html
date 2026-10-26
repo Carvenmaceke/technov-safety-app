@@ -1,0 +1,1216 @@
+<title>TechNov Safety Demo</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: phone prototype on the left, judge-facing "Security Inspector" (simulated backend) on the right; stacks on phones. */
+:root{
+  --bg:#ECEEF3; --surface:#FFFFFF; --surface-2:#F5F6FA; --ink:#141A2E; --muted:#5B6378; --line:#D8DCE5;
+  --brand:#1C2A5A; --brand-ink:#FFFFFF; --sos:#D7263D; --sos-ink:#FFFFFF; --ok:#17784C; --warn:#9A6212; --sim:#6248B3; --code-bg:#0F1426; --code-ink:#C9D3F2;
+  --f-display:"Archivo", "Arial Narrow", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0C1020; --surface:#161B2D; --surface-2:#1D2338; --ink:#E8EBF3; --muted:#9AA2B8; --line:#2B3250;
+  --brand:#8FA6FF; --brand-ink:#0C1020; --sos:#FF4D5E; --sos-ink:#1A0508; --ok:#3CC98A; --warn:#E5AE52; --sim:#B49BFF; --code-bg:#070A14; --code-ink:#C9D3F2; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0C1020; --surface:#161B2D; --surface-2:#1D2338; --ink:#E8EBF3; --muted:#9AA2B8; --line:#2B3250;
+  --brand:#8FA6FF; --brand-ink:#0C1020; --sos:#FF4D5E; --sos-ink:#1A0508; --ok:#3CC98A; --warn:#E5AE52; --sim:#B49BFF; --code-bg:#070A14; --code-ink:#C9D3F2; color-scheme:dark}
+
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+*{box-sizing:border-box}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:400px minmax(0,1fr);gap:28px;align-items:start}
+@media (max-width:900px){.wrap{grid-template-columns:minmax(0,1fr)}}
+header.top{max-width:1180px;margin:0 auto 18px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:baseline;justify-content:space-between}
+header.top h1{font-family:var(--f-display);font-weight:800;font-size:26px;letter-spacing:-.01em;margin:0}
+header.top p{margin:0;color:var(--muted);max-width:62ch}
+.tag{display:inline-block;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:4px;border:1px solid currentColor;line-height:1.4;white-space:nowrap}
+.tag.sim{color:var(--sim)} .tag.ok{color:var(--ok)} .tag.warn{color:var(--warn)} .tag.sos{color:var(--sos)} .tag.mut{color:var(--muted)}
+
+/* Phone */
+.phone{position:sticky;top:16px;width:100%;max-width:400px;margin:0 auto;border-radius:38px;border:10px solid #0B0E18;background:var(--surface);overflow:hidden;box-shadow:0 20px 50px rgba(10,14,30,.25)}
+.statusbar{display:flex;justify-content:space-between;align-items:center;padding:10px 22px 6px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.net{display:flex;gap:6px;align-items:center;font-family:var(--f-mono);font-size:10.5px;font-weight:500}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.dot.cell{background:var(--warn)} .dot.none{background:var(--sos)}
+.screen{position:relative;height:720px;max-height:80vh;min-height:560px;overflow-y:auto;padding:8px 20px 24px;display:flex;flex-direction:column;gap:14px}
+.screen h2{font-family:var(--f-display);font-weight:800;font-size:24px;margin:4px 0 0;letter-spacing:-.01em;text-wrap:balance}
+.screen p.lead{margin:0;color:var(--muted)}
+.back{background:none;border:0;padding:4px 0;color:var(--brand);font-weight:600;cursor:pointer;align-self:flex-start}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:12.5px;font-weight:600}
+.field input,.field select{border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:11px 12px}
+.field .hint{font-size:12px;color:var(--muted)}
+.err{color:var(--sos);font-size:12.5px;font-weight:500}
+.btn{border:0;border-radius:12px;padding:13px 16px;font-weight:600;cursor:pointer;background:var(--brand);color:var(--brand-ink)}
+.btn.ghost{background:transparent;color:var(--brand);border:1px solid var(--line)}
+.btn.danger{background:var(--sos);color:var(--sos-ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center}
+.stack{display:flex;flex-direction:column;gap:10px}
+.checks{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;font-size:12px;color:var(--muted)}
+.checks .on{color:var(--ok)}
+.notice{border:1px dashed var(--sim);border-radius:12px;padding:10px 12px;font-size:12.5px;color:var(--ink);background:color-mix(in srgb,var(--sim) 7%,transparent)}
+.notice b{color:var(--sim)}
+.brandmark{display:flex;gap:10px;align-items:center;margin-top:30px}
+.brandmark svg{flex:none}
+.brandmark span{font-family:var(--f-display);font-weight:800;font-size:30px;letter-spacing:-.02em}
+.list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.item{display:flex;justify-content:space-between;gap:10px;padding:12px 14px;border-top:1px solid var(--line);align-items:center}
+.item:first-child{border-top:0}
+.item .t{font-weight:600}
+.item .s{font-size:12px;color:var(--muted)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{border:1px solid var(--line);border-radius:14px;padding:12px;background:var(--surface-2);text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.tile b{font-size:13.5px} .tile span{font-size:12px;color:var(--muted)}
+.sos-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding:8px 0}
+.sos{width:190px;height:190px;border-radius:50%;border:0;background:var(--sos);color:var(--sos-ink);font-family:var(--f-display);font-weight:800;font-size:44px;letter-spacing:.04em;cursor:pointer;
+  box-shadow:0 0 0 12px color-mix(in srgb,var(--sos) 18%,transparent),0 0 0 26px color-mix(in srgb,var(--sos) 8%,transparent)}
+.sos small{display:block;font-family:var(--f-body);font-size:12px;font-weight:500;letter-spacing:0}
+@media (prefers-reduced-motion:no-preference){.sos{animation:pulse 2.6s ease-in-out infinite}@keyframes pulse{50%{box-shadow:0 0 0 16px color-mix(in srgb,var(--sos) 14%,transparent),0 0 0 32px color-mix(in srgb,var(--sos) 5%,transparent)}}}
+.status-head{background:var(--sos);color:var(--sos-ink);border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.status-head.safe{background:var(--ok)}
+.status-head .ref{font-family:var(--f-mono);font-size:13px}
+.status-head b{font-family:var(--f-display);font-size:20px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-variant-numeric:tabular-nums}
+.map{border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+.map svg{display:block;width:100%;height:auto}
+.overlay{position:absolute;inset:0;background:color-mix(in srgb,var(--ink) 45%,transparent);display:flex;align-items:flex-end}
+.sheet{background:var(--surface);width:100%;border-radius:20px 20px 0 0;padding:18px 20px 24px;display:flex;flex-direction:column;gap:12px}
+.pinrow{display:flex;gap:10px;justify-content:center}
+.pinrow span{width:18px;height:18px;border-radius:50%;border:2px solid var(--ink)}
+.pinrow span.f{background:var(--ink)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pad button{padding:14px;border-radius:12px;border:1px solid var(--line);background:var(--surface-2);font-size:18px;font-weight:600;cursor:pointer}
+.toast{position:absolute;left:16px;right:16px;bottom:16px;background:var(--ink);color:var(--surface);padding:11px 14px;border-radius:12px;font-size:13px;z-index:5}
+.switch{width:44px;height:26px;border-radius:13px;border:0;background:var(--line);position:relative;cursor:pointer;flex:none}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--surface);transition:left .15s}
+.switch[aria-checked="true"]{background:var(--ok)} .switch[aria-checked="true"]::after{left:21px}
+.tamper{display:flex;flex-direction:column;gap:12px;text-align:center;padding:12px 4px}
+.tamper h2{margin:0;color:var(--sos)} .tamper p{color:var(--muted);margin:0}
+.tlock{font-size:46px;line-height:1}
+.evbar{display:inline-flex;gap:8px;align-items:center;justify-content:center;font-size:12.5px;color:var(--sos);font-weight:600}
+.rec{width:10px;height:10px;border-radius:50%;background:var(--sos);flex:none}
+@media (prefers-reduced-motion:no-preference){.rec{animation:blink 1.2s steps(1) infinite}@keyframes blink{50%{opacity:.2}}}
+.evgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.evt{position:relative;border-radius:8px;overflow:hidden;border:1px solid var(--line)}
+.evt svg{display:block;width:100%;height:auto}
+.evt span{position:absolute;right:3px;bottom:2px;font-family:var(--f-mono);font-size:8px;color:#fff;background:rgba(0,0,0,.55);padding:0 3px;border-radius:3px}
+.tfoot{font-size:11.5px;color:var(--muted)}
+
+/* Inspector */
+.insp{display:flex;flex-direction:column;gap:18px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.panel h3{margin:0;font-family:var(--f-display);font-weight:700;font-size:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.panel p{margin:0;color:var(--muted);font-size:13px;max-width:70ch}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:7px 12px;cursor:pointer;font-size:13px;font-weight:500}
+.seg button[aria-pressed="true"]{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-family:var(--f-mono);font-size:11.5px}
+th,td{text-align:left;padding:7px 9px;border-top:1px solid var(--line);white-space:nowrap;font-variant-numeric:tabular-nums}
+th{border-top:0;background:var(--surface-2);font-weight:500;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-size:10.5px}
+.log{background:var(--code-bg);color:var(--code-ink);border-radius:10px;padding:10px 12px;font-family:var(--f-mono);font-size:11.5px;max-height:280px;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.log .l{white-space:pre-wrap;word-break:break-word}
+.log .deny{color:#FF8A96} .log .allow{color:#7FE0B0} .log .sql{color:#8FA6FF} .log .warnc{color:#F2C46D}
+.result{font-family:var(--f-mono);font-size:12px;background:var(--surface-2);border-radius:10px;padding:10px 12px;white-space:pre-wrap;word-break:break-word;border:1px solid var(--line)}
+.tests{display:flex;flex-wrap:wrap;gap:8px}
+.tests button{border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:9px 12px;cursor:pointer;font-size:13px;text-align:left}
+.creds{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+.cred{border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:12.5px;background:var(--surface-2)}
+.cred code{font-family:var(--f-mono);font-size:12px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+</style>
+
+<header class="top">
+  <div>
+    <h1>TechNov</h1>
+    <p>Personal safety SOS prototype for FNB AOTY Hackathon 2026. The phone is the app; the panel shows what the backend and database do behind it.</p>
+  </div>
+  <div class="legend"><span><span class="tag sim">Simulated</span> not a live integration</span><span><span class="tag ok">Real</span> runs for real in your browser</span></div>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="phone" id="phone">
+      <div class="statusbar"><span id="clock">--:--</span><span class="net" id="netbar"></span></div>
+      <div class="screen" id="screen"></div>
+    </div>
+  </div>
+
+  <aside class="insp">
+    <section class="panel">
+      <h3>Demo controls</h3>
+      <p>Switch the phone's connection to show how SOS behaves offline. Alerts are never shown as delivered unless a channel is available.</p>
+      <div class="seg" id="netseg">
+        <button id="net-online" data-act="net" data-v="online" aria-pressed="true">Online</button>
+        <button id="net-cell" data-act="net" data-v="cell" aria-pressed="false">No internet, cellular only</button>
+        <button id="net-none" data-act="net" data-v="none" aria-pressed="false">No signal</button>
+      </div>
+      <div class="seg" id="helpseg" aria-label="Nearby TechNov phones">
+        <button data-act="helpers" data-v="3" aria-pressed="true">3 TechNov phones nearby</button>
+        <button data-act="helpers" data-v="0" aria-pressed="false">Nobody nearby</button>
+      </div>
+      <button class="btn danger" data-act="theft" style="align-self:flex-start;padding:9px 14px">Simulate theft · SIM swap / forced power-off</button>
+      <div class="creds">
+        <div class="cred"><b>Demo user</b><br><code>lerato@demo.co.za</code><br><code>Safe@2026</code> · Safe PIN <code>1357</code></div>
+        <div class="cred"><b>Second user</b> (owns another alert)<br><code>thandi@demo.co.za</code></div>
+        <div class="cred"><b>Admin</b> (used by the tests below)<br><code>admin@technov.co.za</code></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>Security measures <span class="tag ok">Real</span></h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Measure</th><th>How it works here</th></tr></thead>
+        <tbody>
+          <tr><td>Password hashing</td><td>PBKDF2-SHA256, 100 000 iterations, unique salt per user (Web Crypto)</td></tr>
+          <tr><td>Brute-force lockout</td><td>5 wrong passwords locks the account for 60 s</td></tr>
+          <tr><td>No account enumeration</td><td>Same message for wrong email or wrong password</td></tr>
+          <tr><td>Email verification</td><td>6-digit code, expires in 10 min, max 5 tries</td></tr>
+          <tr><td>Sessions</td><td>Random 256-bit token, auto sign-out after 3 min idle</td></tr>
+          <tr><td>Access control</td><td>Every API call checks token, role and record owner</td></tr>
+          <tr><td>SQL injection</td><td>Parameterised queries only (see audit log)</td></tr>
+          <tr><td>Offline queue</td><td>AES-256-GCM encrypted on the device until sent</td></tr>
+          <tr><td>Duress PIN</td><td>Safe PIN reversed fakes a cancel; the alert stays active</td></tr>
+          <tr><td>XSS</td><td>All user input is escaped before display</td></tr>
+          <tr><td>Helper relay privacy</td><td>Beacon ID rotates every 15 min, payload is encrypted for the server only, helper identity is never stored</td></tr>
+        </tbody></table></div>
+    </section>
+
+    <section class="panel">
+      <h3>Helper network · Bluetooth relay <span class="tag sim">Simulated Bluetooth</span></h3>
+      <p>Phones with TechNov installed (and "Help others nearby" switched on) listen for SOS beacons. A helper that has signal forwards the encrypted beacon with its own GPS. It never learns who you are, and you never learn who the helper is.</p>
+      <div class="tbl" id="helpertbl"></div>
+      <div class="kv" id="beaconbox"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Session</h3>
+      <div class="kv" id="sessbox"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Access-control tests</h3>
+      <p>Run these to prove one user cannot read another user's alert, and that admins do not get free access to recordings.</p>
+      <div class="tests">
+        <button data-act="t1">1 · Signed-in user reads Thandi's alert</button>
+        <button data-act="t2">2 · Request with no token</button>
+        <button data-act="t3">3 · Admin lists alerts</button>
+        <button data-act="t4">4 · Admin opens a recording, no reason</button>
+        <button data-act="t5">5 · Admin opens a recording with break-glass reason</button>
+      </div>
+      <div class="result" id="testout">Results appear here.</div>
+    </section>
+
+    <section class="panel">
+      <h3>MySQL · users table <span class="tag sim">Simulated DB</span></h3>
+      <p>What an attacker would see if the database leaked: no plain-text passwords.</p>
+      <div class="tbl" id="userstbl"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Encrypted offline queue <span class="tag ok">Real AES-GCM</span></h3>
+      <div id="queuebox"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Evidence vault <span class="tag warn">Write-once</span></h3>
+      <p>Theft-lock frames upload the instant they are taken. The table is granted INSERT only — no UPDATE, no DELETE — so neither a thief nor an admin can erase them.</p>
+      <div id="evidencebox"></div>
+    </section>
+
+    <section class="panel">
+      <h3>Audit log</h3>
+      <div class="log" id="auditlog"></div>
+    </section>
+  </aside>
+</div>
+
+<script>
+"use strict";
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const enc = new TextEncoder(), dec = new TextDecoder();
+const hex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2,"0")).join("");
+const b64 = b => btoa(String.fromCharCode(...new Uint8Array(b)));
+const rand = n => crypto.getRandomValues(new Uint8Array(n));
+const fmtTime = d => new Date(d).toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",second:"2-digit",timeZone:"Africa/Johannesburg"});
+const fmtDate = d => new Date(d).toLocaleString("en-ZA",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Africa/Johannesburg"});
+function ctEqual(a,b){ if(a.length!==b.length) return false; let r=0; for(let i=0;i<a.length;i++) r|=a.charCodeAt(i)^b.charCodeAt(i); return r===0; }
+
+async function hashPassword(pw, saltHex){
+  const salt = saltHex ? Uint8Array.from(saltHex.match(/../g).map(h=>parseInt(h,16))) : rand(16);
+  const key = await crypto.subtle.importKey("raw", enc.encode(pw), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({name:"PBKDF2", salt, iterations:100000, hash:"SHA-256"}, key, 256);
+  return {salt: hex(salt), hash: hex(bits)};
+}
+
+/* ---------- simulated backend + MySQL ---------- */
+const SESSION_IDLE_MS = 3*60*1000;
+const db = { users:[], contacts:[], alerts:[], sessions:{}, codes:{}, audit:[], evidence:[], nextId:1 };
+
+function audit(actor, action, result, sql){
+  db.audit.unshift({t:Date.now(), actor, action, result, sql});
+  if(db.audit.length>60) db.audit.pop();
+  renderInspector();
+}
+class ApiError extends Error{ constructor(status,msg){ super(msg); this.status=status; } }
+
+const api = {
+  async _auth(token){
+    const s = token && db.sessions[token];
+    if(!s) throw new ApiError(401,"Not signed in");
+    if(Date.now()-s.last > SESSION_IDLE_MS){ delete db.sessions[token]; throw new ApiError(401,"Session expired"); }
+    s.last = Date.now();
+    return db.users.find(u=>u.id===s.userId);
+  },
+  async register({name,email,password,pin}){
+    await sleep(250);
+    email = email.trim().toLowerCase();
+    const exists = db.users.some(u=>u.email===email);
+    if(exists){
+      audit("anonymous","REGISTER duplicate email (no new account, same response shown)","allow","SELECT id FROM users WHERE email = ?  -- params: [hidden]");
+      return {ok:true};
+    }
+    const {salt,hash} = await hashPassword(password);
+    const pinH = await hashPassword(pin);
+    const u = {id:db.nextId++, name, email, role:"user", salt, hash, pinSalt:pinH.salt, pinHash:pinH.hash, verified:false, failed:0, lockUntil:0, biometric:false};
+    db.users.push(u);
+    audit("anonymous",`REGISTER user #${u.id}`,"allow","INSERT INTO users (full_name, email, password_hash, salt, role) VALUES (?, ?, ?, ?, 'user')");
+    this._issueCode(email);
+    return {ok:true};
+  },
+  _issueCode(email){
+    const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6,"0");
+    db.codes[email] = {code, exp:Date.now()+10*60*1000, tries:0, sentAt:Date.now()};
+    S.inbox = {email, code, at:Date.now()};
+  },
+  async resend(email){
+    const c = db.codes[email];
+    if(c && Date.now()-c.sentAt < 30000) throw new ApiError(429,"Please wait 30 seconds before asking for another code.");
+    if(db.users.some(u=>u.email===email && !u.verified)) this._issueCode(email);
+    audit("anonymous","RESEND verification code","allow");
+  },
+  async verify(email, code){
+    await sleep(200);
+    const c = db.codes[email];
+    if(!c || Date.now()>c.exp){ audit("anonymous","VERIFY expired/missing code","deny"); throw new ApiError(400,"This code has expired. Ask for a new one."); }
+    c.tries++;
+    if(c.tries>5){ delete db.codes[email]; audit("anonymous","VERIFY too many attempts","deny"); throw new ApiError(429,"Too many attempts. Ask for a new code."); }
+    if(!ctEqual(c.code, code)){ audit("anonymous","VERIFY wrong code","deny"); throw new ApiError(400,"That code is not correct."); }
+    const u = db.users.find(x=>x.email===email); u.verified = true; delete db.codes[email];
+    audit(`user #${u.id}`,"VERIFY email","allow","UPDATE users SET email_verified = 1 WHERE id = ?");
+    return {ok:true};
+  },
+  async login(email, password){
+    await sleep(300);
+    email = email.trim().toLowerCase();
+    const u = db.users.find(x=>x.email===email);
+    const generic = "Email or password is incorrect.";
+    if(!u){ await hashPassword(password); audit("anonymous","LOGIN unknown email","deny","SELECT * FROM users WHERE email = ?"); throw new ApiError(401,generic); }
+    if(u.lockUntil > Date.now()){
+      const s = Math.ceil((u.lockUntil-Date.now())/1000);
+      audit(`user #${u.id}`,"LOGIN blocked, account locked","deny");
+      throw new ApiError(423,`Too many attempts. Try again in ${s} seconds.`);
+    }
+    const {hash} = await hashPassword(password, u.salt);
+    if(!ctEqual(hash, u.hash)){
+      u.failed++;
+      if(u.failed>=5){ u.lockUntil = Date.now()+60000; u.failed=0; audit(`user #${u.id}`,"LOGIN 5th failure, locked 60 s","deny","UPDATE users SET locked_until = ? WHERE id = ?"); throw new ApiError(423,"Too many attempts. Your account is locked for 60 seconds."); }
+      audit(`user #${u.id}`,`LOGIN wrong password (${u.failed}/5)`,"deny","UPDATE users SET failed_attempts = failed_attempts + 1 WHERE id = ?");
+      throw new ApiError(401,generic);
+    }
+    if(!u.verified){ audit(`user #${u.id}`,"LOGIN email not verified","deny"); throw new ApiError(403,"Verify your email before signing in."); }
+    u.failed = 0;
+    return this._session(u,"password");
+  },
+  _session(u, how){
+    const token = hex(rand(32));
+    db.sessions[token] = {userId:u.id, created:Date.now(), last:Date.now()};
+    audit(`user #${u.id}`,`LOGIN success (${how})`,"allow","INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)");
+    return {token, user:{id:u.id,name:u.name,email:u.email,role:u.role,biometric:u.biometric}};
+  },
+  async biometricLogin(deviceKey){
+    await sleep(200);
+    const u = db.users.find(x=>x.deviceKey && x.deviceKey===deviceKey && x.biometric);
+    if(!u){ audit("anonymous","BIOMETRIC login, unknown device key","deny"); throw new ApiError(401,"Biometric sign-in is not set up on this phone."); }
+    return this._session(u,"device biometric");
+  },
+  async logout(token){ const s=db.sessions[token]; if(s){ delete db.sessions[token]; audit(`user #${s.userId}`,"LOGOUT","allow","DELETE FROM sessions WHERE token_hash = ?"); } },
+  async setBiometric(token, on, deviceKey){
+    const u = await this._auth(token); u.biometric = on; u.deviceKey = on ? deviceKey : null;
+    audit(`user #${u.id}`,`BIOMETRIC ${on?"enabled":"disabled"}`,"allow","UPDATE users SET biometric_enabled = ? WHERE id = ?");
+  },
+  async listContacts(token){
+    const u = await this._auth(token);
+    audit(`user #${u.id}`,"GET /contacts","allow","SELECT * FROM trusted_contacts WHERE user_id = ?");
+    return db.contacts.filter(c=>c.userId===u.id);
+  },
+  async addContact(token, c){
+    const u = await this._auth(token);
+    const row = {...c, id:"c"+db.nextId++, userId:u.id}; db.contacts.push(row);
+    audit(`user #${u.id}`,"POST /contacts","allow","INSERT INTO trusted_contacts (user_id, name, phone, relationship, method) VALUES (?, ?, ?, ?, ?)");
+    return row;
+  },
+  async removeContact(token, id){
+    const u = await this._auth(token);
+    const i = db.contacts.findIndex(c=>c.id===id && c.userId===u.id);
+    if(i<0){ audit(`user #${u.id}`,`DELETE /contacts/${id} not owner`,"deny"); throw new ApiError(403,"Not allowed"); }
+    db.contacts.splice(i,1);
+    audit(`user #${u.id}`,`DELETE /contacts/${id}`,"allow","DELETE FROM trusted_contacts WHERE id = ? AND user_id = ?");
+  },
+  async relayAlert(helperAnon, beaconId, ciphertext, helperLoc, alertRef){
+    await sleep(300);
+    const owner = db.users.find(x=>x.beaconIds && x.beaconIds.includes(beaconId));
+    if(!owner){ audit(`helper ${helperAnon}`,"RELAY unknown beacon, dropped","deny"); throw new ApiError(404,"Unknown beacon"); }
+    let a = db.alerts.find(x=>x.id===alertRef);
+    if(!a){ a = {id:alertRef, userId:owner.id, at:Date.now(), status:"active", lat:helperLoc.lat, lng:helperLoc.lng, via:"relay", sightings:[]}; db.alerts.push(a); }
+    a.sightings = a.sightings || [];
+    a.sightings.push({t:Date.now(), helper:helperAnon, lat:helperLoc.lat, lng:helperLoc.lng, rssi:helperLoc.rssi});
+    audit(`helper ${helperAnon} (anonymous)`,`RELAY beacon ${beaconId.slice(0,6)}… for ${alertRef}: helper GPS + signal strength stored, helper identity not stored`,"warn",
+      "INSERT INTO relay_sightings (alert_ref, lat, lng, rssi, seen_at) VALUES (?, ?, ?, ?, ?)  -- no helper user_id column");
+    return {ok:true};
+  },
+  async createAlert(token, a){
+    const u = await this._auth(token);
+    if(db.alerts.some(x=>x.id===a.id)){ audit(`user #${u.id}`,`POST /alerts ${a.id}: already received via helper relay, merged`,"allow","UPDATE alerts SET synced_direct = 1 WHERE ref = ? AND user_id = ?"); return; }
+    db.alerts.push({...a, userId:u.id, serverAt:Date.now()});
+    audit(`user #${u.id}`,`POST /alerts ${a.id}`,"allow","INSERT INTO alerts (ref, user_id, activated_at, lat, lng, status) VALUES (?, ?, ?, ?, ?, 'active')");
+  },
+  async emergencyAlert(deviceKey, a){
+    const u = db.users.find(x=>x.deviceKey===deviceKey);
+    if(!u) throw new ApiError(401,"Unknown device");
+    if(db.alerts.some(x=>x.id===a.id)){ audit(`device of user #${u.id}`,`POST /alerts/emergency ${a.id}: already received via helper relay, merged`,"allow"); return; }
+    db.alerts.push({...a, userId:u.id, serverAt:Date.now()});
+    audit(`device of user #${u.id}`,`POST /alerts/emergency ${a.id} (device key, no login needed)`,"allow","INSERT INTO alerts (ref, user_id, activated_at, lat, lng, status) VALUES (?, ?, ?, ?, ?, 'active')");
+  },
+  async listAlerts(token){
+    const u = await this._auth(token);
+    audit(`user #${u.id}`,"GET /alerts","allow","SELECT ref, activated_at, status FROM alerts WHERE user_id = ? ORDER BY activated_at DESC");
+    return db.alerts.filter(a=>a.userId===u.id);
+  },
+  async getAlert(token, ref){
+    let u;
+    try{ u = await this._auth(token); }catch(e){ audit("anonymous",`GET /alerts/${ref} with no token`,"deny"); throw e; }
+    const a = db.alerts.find(x=>x.id===ref);
+    audit(`user #${u.id}`,`GET /alerts/${ref}`, (a && a.userId===u.id)?"allow":"deny","SELECT * FROM alerts WHERE ref = ? AND user_id = ?");
+    if(!a || a.userId!==u.id) throw new ApiError(403,"You do not have access to this alert.");
+    return a;
+  },
+  async cancelAlert(token, deviceKey, ref, pin){
+    let u = null;
+    if(token){ u = await this._auth(token); } else { u = db.users.find(x=>x.deviceKey===deviceKey); }
+    const a = db.alerts.find(x=>x.id===ref && x.userId===u?.id);
+    if(!u) throw new ApiError(401,"Not allowed");
+    const fwd = await hashPassword(pin, u.pinSalt);
+    const rev = await hashPassword(pin.split("").reverse().join(""), u.pinSalt);
+    if(ctEqual(fwd.hash,u.pinHash)){
+      if(a) a.status="cancelled";
+      audit(`user #${u.id}`,`CANCEL ${ref} with safe PIN`,"allow","UPDATE alerts SET status = 'cancelled' WHERE ref = ? AND user_id = ?");
+      return "cancelled";
+    }
+    if(ctEqual(rev.hash,u.pinHash)){
+      if(a) a.status="duress";
+      audit(`user #${u.id}`,`DURESS PIN on ${ref}: phone shows "cancelled", alert stays ACTIVE and contacts are told`,"warn","UPDATE alerts SET status = 'duress' WHERE ref = ? AND user_id = ?");
+      return "duress";
+    }
+    audit(`user #${u.id}`,`CANCEL ${ref} wrong PIN`,"deny");
+    throw new ApiError(401,"Wrong PIN.");
+  },
+  async storeEvidence(frame){
+    db.evidence.push(frame);
+    audit(`device of user #${frame.userId}`,`EVIDENCE ${frame.id} stored (write-once; no delete permission exists)`,"warn",
+      "INSERT INTO evidence_frames (id, alert_ref, user_id, captured_at, media_ref) VALUES (?, ?, ?, ?, ?)  -- table grants INSERT only");
+    renderInspector();
+  },
+  async deleteEvidence(){
+    audit("any caller","DELETE evidence attempted","deny","-- refused: evidence_frames has no DELETE grant for any role");
+    throw new ApiError(403,"Evidence cannot be deleted. The table has no delete permission for any role, including admins.");
+  },
+  async adminLogin(){
+    const u = db.users.find(x=>x.role==="admin");
+    const {hash} = await hashPassword("Admin@2026", u.salt);
+    if(!ctEqual(hash,u.hash)) throw new ApiError(401,"x");
+    return this._session(u,"password").token;
+  },
+  async adminListAlerts(token){
+    const u = await this._auth(token);
+    if(u.role!=="admin"){ audit(`user #${u.id}`,"GET /admin/alerts not admin","deny"); throw new ApiError(403,"Admins only"); }
+    audit(`admin #${u.id}`,"GET /admin/alerts (metadata only)","allow","SELECT ref, activated_at, status FROM alerts  -- no location, no recordings");
+    return db.alerts.map(a=>({ref:a.id, activated:fmtDate(a.at), status:a.status}));
+  },
+  async adminRecording(token, ref, reason){
+    const u = await this._auth(token);
+    if(u.role!=="admin") throw new ApiError(403,"Admins only");
+    if(!reason || reason.length<15){ audit(`admin #${u.id}`,`GET /admin/recordings/${ref} without justification`,"deny"); throw new ApiError(403,"Recordings need a written break-glass reason. Access refused and logged."); }
+    audit(`admin #${u.id}`,`BREAK-GLASS recording ${ref}. Reason: "${reason}"`,"warn","INSERT INTO privileged_access_log (admin_id, alert_ref, reason) VALUES (?, ?, ?)");
+    return {ref, recording:"(simulated) evidence file reference, access expires in 15 min"};
+  }
+};
+
+/* ---------- device-side encrypted queue (real AES-GCM) ---------- */
+let deviceKeyAES;
+const queue = []; // {ref, iv, ct}
+async function enqueue(alert){
+  const iv = rand(12);
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, deviceKeyAES, enc.encode(JSON.stringify(alert)));
+  queue.push({ref:alert.id, iv:b64(iv), ct:b64(ct), raw:{iv,ct}});
+  renderInspector();
+}
+async function flushQueue(){
+  while(queue.length){
+    const q = queue.shift();
+    const plain = await crypto.subtle.decrypt({name:"AES-GCM", iv:q.raw.iv}, deviceKeyAES, q.raw.ct);
+    const alert = JSON.parse(dec.decode(plain));
+    try{
+      if(S.session) await api.createAlert(S.session.token, alert);
+      else await api.emergencyAlert(S.device.key, alert);
+    }catch(e){ queue.unshift(q); break; }
+    const local = S.alerts.find(a=>a.id===alert.id);
+    if(local){
+      local.synced = true;
+      local.recipients.forEach(r=>{ if(r.state==="queued" || r.state==="sms-sent" || r.state==="relayed") deliver(local, r); });
+      local.log.push({t:Date.now(), m:"Back online: encrypted alert sent to TechNov server"});
+    }
+  }
+  renderInspector(); render();
+}
+
+/* ---------- Helper network (simulated Bluetooth relay) ----------
+   Real build: Bluetooth Low Energy advertising/scanning in the native app.
+   Distance from signal strength (RSSI): d = 10^((TxPower - RSSI) / (10 * n)), TxPower = -59 dBm at 1 m, n = 2.2 (urban). */
+const H = { count:3, optIn:true, list:[], truePos:{lat:-25.7461, lng:28.1881}, timer:null };
+const mPerLat = 111000, mPerLng = 100500; // metres per degree at Pretoria's latitude
+const rssiToM = r => Math.pow(10, (-59 - r) / 22);
+function spawnHelpers(){
+  H.list = [];
+  for(let i=0;i<H.count;i++){
+    const ang = Math.random()*Math.PI*2, dist = 6 + Math.random()*35;              // metres from the person
+    const lat = H.truePos.lat + Math.sin(ang)*dist/mPerLat, lng = H.truePos.lng + Math.cos(ang)*dist/mPerLng;
+    const rssi = Math.round(-59 - 22*Math.log10(dist) + (Math.random()*4-2));        // what the helper's radio would measure
+    H.list.push({anon:hex(rand(2)), lat, lng, rssi, signal: i<2, est: rssiToM(rssi)});
+  }
+  renderInspector();
+}
+function estimateFrom(helpers){
+  // Weighted centroid: closer helpers (stronger signal) count more. Weight = 1 / distance².
+  let W=0, lat=0, lng=0, spread=0;
+  helpers.forEach(h=>{ const w = 1/Math.max(1,h.est)**2; W+=w; lat+=h.lat*w; lng+=h.lng*w; spread+=h.est*w; });
+  return {lat:lat/W, lng:lng/W, acc:Math.round(spread/W + 8)};
+}
+async function relayViaHelpers(alert, payload){
+  if(!S.beacon){ return; }
+  alert.log.push({t:Date.now(), m:`Broadcasting encrypted Bluetooth SOS beacon (ID ${S.beacon.id.slice(0,6)}…)`}); render();
+  await sleep(900);
+  if(!H.list.length){
+    alert.log.push({t:Date.now(), m:"No TechNov phones nearby. Alert stays encrypted on this phone and keeps broadcasting."});
+    alert.beacon = "searching"; render(); return;
+  }
+  alert.log.push({t:Date.now(), m:`Beacon heard by ${H.list.length} nearby TechNov phone${H.list.length>1?"s":""}`});
+  const relayers = H.list.filter(h=>h.signal);
+  if(!relayers.length){ alert.log.push({t:Date.now(), m:"Nearby phones heard you but have no signal. They will forward it when they reconnect."}); render(); return; }
+  const iv = rand(12);
+  const ct = await crypto.subtle.encrypt({name:"AES-GCM", iv}, deviceKeyAES, enc.encode(JSON.stringify(payload)));
+  alert.beaconCt = b64(ct);
+  for(const h of relayers) await api.relayAlert(h.anon, S.beacon.id, alert.beaconCt, h, alert.id);
+  const est = estimateFrom(relayers);
+  alert.loc = {...est, place:`Estimated from ${relayers.length} nearby phones`, kind:"helper", ts:Date.now(), n:relayers.length};
+  alert.trail = [{t:Date.now(), lat:est.lat, lng:est.lng, acc:est.acc, n:relayers.length}];
+  alert.relayed = true; alert.beacon = "relayed";
+  alert.recipients.forEach(r=>{ if(r.state==="queued") r.state = "relayed"; });
+  alert.log.push({t:Date.now(), m:`Server received the alert through ${relayers.length} helper phone${relayers.length>1?"s":""}. Location estimated ±${est.acc} m. Contacts notified (simulated).`});
+  render(); startTrail(alert);
+}
+function startTrail(alert){
+  clearInterval(H.timer);
+  H.timer = setInterval(async ()=>{
+    if(alert.status!=="active" || S.net!=="none" || !H.count){ clearInterval(H.timer); return; }
+    // The person keeps moving; new strangers' phones come in and out of range.
+    H.truePos = {lat:H.truePos.lat + 0.00005 + (Math.random()-0.5)*0.00004, lng:H.truePos.lng + 0.00016 + (Math.random()-0.5)*0.00005};
+    spawnHelpers();
+    const relayers = H.list.filter(h=>h.signal);
+    for(const h of relayers) await api.relayAlert(h.anon, S.beacon.id, alert.beaconCt, h, alert.id);
+    const est = estimateFrom(relayers);
+    const prev = alert.trail[alert.trail.length-1];
+    const moved = Math.round(Math.hypot((est.lat-prev.lat)*mPerLat, (est.lng-prev.lng)*mPerLng));
+    alert.trail.push({t:Date.now(), lat:est.lat, lng:est.lng, acc:est.acc, n:relayers.length});
+    alert.loc = {...est, place:`Estimated from ${relayers.length} nearby phones`, kind:"helper", ts:Date.now(), n:relayers.length};
+    alert.log.push({t:Date.now(), m:`New sighting by ${relayers.length} other helper phones: moved ~${moved} m since last point`});
+    render();
+  }, 7000);
+}
+
+/* ---------- app state ---------- */
+const S = {
+  screen:"welcome", net:"online", session:null, inbox:null, pendingEmail:null,
+  device:{configured:false, userId:null, key:null, contacts:[]},
+  contacts:[], alerts:[], activeRef:null, emergencyMode:false,
+  err:{}, toast:null, sheet:null, pin:"", pinTries:0, confirmRemove:null, regPw:"", beacon:null, tamper:null
+};
+let tamperTimer;
+function go(screen){ S.screen = screen; S.err = {}; S.sheet = null; render(); $("screen").scrollTop = 0; }
+function toast(msg){ S.toast = msg; render(); clearTimeout(toast._t); toast._t = setTimeout(()=>{ S.toast=null; render(); }, 3200); }
+
+/* ---------- SOS workflow ---------- */
+const SAMPLE_LOC = {lat:-25.7461, lng:28.1881, place:"Church Square area, Pretoria", acc:18};
+function newRef(){ const d=new Date(); return "TN-"+d.toISOString().slice(0,10).replace(/-/g,"")+"-"+String(rand(2)[0]*39+rand(1)[0]).padStart(4,"0").slice(-4); }
+
+async function triggerSOS(){
+  const contacts = (S.session ? S.contacts : S.device.contacts).filter(c=>c.alerts);
+  const now = Date.now();
+  const offline = S.net!=="online";
+  const alert = {
+    id:newRef(), at:now, status:"active",
+    loc: S.net==="none"
+      ? {...SAMPLE_LOC, kind:"last", ts: now-14*60000}
+      : {...SAMPLE_LOC, kind:"current", ts: now},
+    recording:"simulated",
+    recipients: contacts.map(c=>({name:c.name, phone:c.phone, method:c.method, state:"created"})),
+    services:"none", log:[{t:now, m:"SOS activated on this phone"}], synced:false, trail:[], relayed:false, beacon:null
+  };
+  S.alerts.unshift(alert); S.activeRef = alert.id; go("status");
+  const payload = {id:alert.id, at:alert.at, status:"active", lat:alert.loc.lat, lng:alert.loc.lng};
+
+  if(S.net==="online"){
+    try{
+      await sleep(500);
+      if(S.session) await api.createAlert(S.session.token, payload); else await api.emergencyAlert(S.device.key, payload);
+      alert.synced = true; alert.log.push({t:Date.now(), m:"Alert saved on TechNov server over HTTPS"});
+      alert.recipients.forEach(r=>deliver(alert, r));
+    }catch(e){
+      await enqueue(payload); alert.recipients.forEach(r=>r.state="queued");
+      alert.log.push({t:Date.now(), m:"Server unreachable: alert encrypted and queued"});
+    }
+  } else if(S.net==="cell"){
+    await enqueue(payload);
+    alert.log.push({t:Date.now(), m:"No internet: alert encrypted and queued for the server"});
+    alert.recipients.forEach(r=>{ r.state = r.method==="SMS" ? "sms-sent" : "queued"; });
+    alert.log.push({t:Date.now(), m:"SMS fallback used for SMS contacts (simulated)"});
+  } else {
+    await enqueue(payload);
+    alert.recipients.forEach(r=>r.state="queued");
+    alert.log.push({t:Date.now(), m:"No signal: alert stored encrypted on phone. Last known location attached."});
+    render();
+    H.truePos = {lat:SAMPLE_LOC.lat, lng:SAMPLE_LOC.lng}; spawnHelpers();
+    await relayViaHelpers(alert, payload);
+  }
+  render();
+}
+function deliver(alert, r){
+  r.state = "sent"; render();
+  setTimeout(()=>{ if(S.net==="online"){ r.state = "delivered"; render(); } }, 1600);
+}
+const STATE_LABEL = {
+  created:["Created on phone","mut"], queued:["Queued, waiting for signal","warn"],
+  "sms-sent":["SMS sent, no delivery receipt","warn"], sent:["Sent","ok"], delivered:["Delivery confirmed","ok"],
+  relayed:["Sent via nearby phone","ok"]
+};
+
+/* ---------- screens ---------- */
+const logo = `<svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true"><path d="M20 3 34 9v10c0 9-6 15-14 18C12 34 6 28 6 19V9z" fill="var(--sos)"/><path d="M20 12v10M20 26.5v.5" stroke="var(--sos-ink)" stroke-width="3.4" stroke-linecap="round"/></svg>`;
+const sim = t => `<span class="tag sim">${t||"Simulated"}</span>`;
+const errLine = k => S.err[k] ? `<div class="err" role="alert">${esc(S.err[k])}</div>` : "";
+
+const screens = {
+  welcome(){
+    const can = S.device.configured;
+    return `
+    <div class="brandmark">${logo}<span>TechNov</span></div>
+    <h2>Help, one press away.</h2>
+    <p class="lead">Send an SOS with your location to the people you trust, even when you can't unlock your phone and dial.</p>
+    <div class="stack" style="margin-top:auto">
+      <button class="btn danger" data-act="emergency" ${can?"":"disabled"}>Emergency SOS, no sign-in</button>
+      ${can?`<div class="hint" style="font-size:12px;color:var(--muted)">Uses the contacts already set up on this phone. Your account and history stay locked.</div>`
+           :`<div style="font-size:12px;color:var(--muted)">Sign in once on this phone to enable SOS without signing in.</div>`}
+      <button class="btn" data-act="go" data-v="register">Create account</button>
+      <button class="btn ghost" data-act="go" data-v="login">Sign in</button>
+    </div>`;
+  },
+  register(){
+    const pw = S.regPw;
+    const rules = [[pw.length>=8,"8+ characters"],[/[A-Z]/.test(pw),"Uppercase letter"],[/\d/.test(pw),"Number"],[/[^A-Za-z0-9]/.test(pw),"Symbol"]];
+    return `
+    <button class="back" data-act="go" data-v="welcome">‹ Back</button>
+    <h2>Create your account</h2>
+    <form id="f-register" class="stack" novalidate>
+      <div class="field"><label for="r-name">Full name</label><input id="r-name" autocomplete="name" required></div>
+      <div class="field"><label for="r-email">Email address</label><input id="r-email" type="email" autocomplete="email" required></div>
+      <div class="field"><label for="r-pw">Password</label><input id="r-pw" type="password" autocomplete="new-password" value="${esc(pw)}" data-live="pw">
+        <div class="checks" id="pwchecks">${rules.map(r=>`<span class="${r[0]?"on":""}">${r[0]?"✓":"○"} ${r[1]}</span>`).join("")}</div></div>
+      <div class="field"><label for="r-pw2">Confirm password</label><input id="r-pw2" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="r-pin">Safe PIN (4 digits)</label><input id="r-pin" inputmode="numeric" maxlength="4" autocomplete="off">
+        <span class="hint">Cancels an alert. Entering it backwards looks like a cancel but keeps the alert running, in case someone forces you.</span></div>
+      <label class="row" style="align-items:flex-start;font-size:12.5px"><input type="checkbox" id="r-consent" style="margin-top:3px">
+        <span>I agree that TechNov may store my details and share my location with my trusted contacts during an alert, as set out in the privacy notice (POPIA).</span></label>
+      ${errLine("register")}
+      <button class="btn" type="submit">Create account</button>
+    </form>`;
+  },
+  verify(){
+    return `
+    <button class="back" data-act="go" data-v="welcome">‹ Back</button>
+    <h2>Check your email</h2>
+    <p class="lead">We sent a 6-digit code to <b>${esc(S.pendingEmail)}</b>. It expires in 10 minutes.</p>
+    ${S.inbox && S.inbox.email===S.pendingEmail ? `<div class="notice"><b>Demo inbox</b> ${sim("Simulated email")}<br>From: TechNov &lt;no-reply@technov.co.za&gt;<br>Your verification code is <b style="font-family:var(--f-mono);font-size:16px;color:var(--ink)">${S.inbox.code}</b></div>`
+      : `<div class="notice"><b>Demo inbox</b> ${sim("Simulated email")}<br>No code was sent. If an account already exists for this email, sign in instead.</div>`}
+    <form id="f-verify" class="stack" novalidate>
+      <div class="field"><label for="v-code">Verification code</label><input id="v-code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></div>
+      ${errLine("verify")}
+      <button class="btn" type="submit">Verify and continue</button>
+      <button class="btn ghost" type="button" data-act="resend">Resend code</button>
+    </form>`;
+  },
+  login(){
+    const bio = S.device.configured && db.users.find(u=>u.id===S.device.userId)?.biometric;
+    return `
+    <button class="back" data-act="go" data-v="welcome">‹ Back</button>
+    <h2>Sign in</h2>
+    <form id="f-login" class="stack" novalidate>
+      <div class="field"><label for="l-email">Email address</label><input id="l-email" type="email" autocomplete="username"></div>
+      <div class="field"><label for="l-pw">Password</label><input id="l-pw" type="password" autocomplete="current-password"></div>
+      ${errLine("login")}
+      <button class="btn" type="submit" id="l-submit">Sign in</button>
+      <button class="btn ghost" type="button" data-act="forgot">Forgot password?</button>
+      ${bio?`<button class="btn ghost" type="button" data-act="bio">Sign in with fingerprint ${sim()}</button>`:""}
+    </form>
+    ${S.err.forgot?`<div class="notice">${esc(S.err.forgot)}</div>`:""}`;
+  },
+  home(){
+    const u = S.session.user;
+    const last = S.alerts[0];
+    return `
+    <div class="row" style="justify-content:space-between;margin-top:6px">
+      <div><div style="font-size:12px;color:var(--muted)">Signed in as</div><b>${esc(u.name)}</b></div>
+      <span class="tag ok">${S.contacts.filter(c=>c.alerts).length} contacts ready</span>
+    </div>
+    <div class="sos-wrap">
+      <button class="sos" data-act="sos" aria-label="Send SOS alert">SOS<small>Press to alert</small></button>
+      <div style="font-size:12px;color:var(--muted);text-align:center;max-width:30ch">Sends immediately. You can cancel afterwards with your Safe PIN.</div>
+    </div>
+    ${last && last.status==="active" ? `<button class="btn danger" data-act="open" data-v="${last.id}">Active alert ${esc(last.id)} · view status</button>` : ""}
+    <div class="tiles">
+      <button class="tile" data-act="go" data-v="contacts"><b>Trusted contacts</b><span>Who gets your alert</span></button>
+      <button class="tile" data-act="go" data-v="location"><b>Location</b><span>What contacts will see</span></button>
+      <button class="tile" data-act="go" data-v="history"><b>Alert history</b><span>Your past alerts</span></button>
+      <button class="tile" data-act="go" data-v="settings"><b>Settings & privacy</b><span>Biometrics, POPIA</span></button>
+    </div>
+    <div style="font-size:12px;color:var(--muted)">Power-button triple-press is planned. Most phones don't let apps detect it reliably, so this demo uses the on-screen button.</div>`;
+  },
+  contacts(){
+    return `
+    <button class="back" data-act="go" data-v="home">‹ Home</button>
+    <h2>Trusted contacts</h2>
+    <p class="lead">Only people switched on here receive your alert and location.</p>
+    <div class="list">${S.contacts.length? S.contacts.map(c=>`
+      <div class="item"><div style="min-width:0"><div class="t">${esc(c.name)}</div><div class="s">${esc(c.relationship)} · ${esc(c.phone)} · ${esc(c.method)}</div></div>
+      <div class="row">
+        <button class="switch" role="switch" aria-label="Receive alerts" aria-checked="${c.alerts}" data-act="toggleC" data-v="${c.id}"></button>
+        ${S.confirmRemove===c.id?`<button class="btn danger" style="padding:7px 10px" data-act="rmC" data-v="${c.id}">Remove</button>`
+          :`<button class="btn ghost" style="padding:7px 10px" data-act="askRm" data-v="${c.id}">✕</button>`}
+      </div></div>`).join("") : `<div class="item"><span class="s">No contacts yet. Add someone who can act fast.</span></div>`}
+    </div>
+    <form id="f-contact" class="stack" novalidate>
+      <b style="font-family:var(--f-display)">Add a contact</b>
+      <div class="field"><label for="c-name">Name</label><input id="c-name"></div>
+      <div class="field"><label for="c-phone">SA mobile number</label><input id="c-phone" inputmode="tel" placeholder="072 123 4567"></div>
+      <div class="row">
+        <div class="field" style="flex:1"><label for="c-rel">Relationship</label><input id="c-rel" placeholder="Sister"></div>
+        <div class="field" style="flex:1"><label for="c-method">Notify by</label><select id="c-method"><option>SMS</option><option>Push</option><option>WhatsApp</option></select></div>
+      </div>
+      ${errLine("contact")}
+      <button class="btn" type="submit">Add contact</button>
+    </form>`;
+  },
+  status(){
+    const a = S.alerts.find(x=>x.id===S.activeRef);
+    if(!a) return "";
+    const ended = a.status==="cancelled" || a.status==="duress";
+    const locAge = Math.round((Date.now()-a.loc.ts)/60000);
+    return `
+    ${S.emergencyMode ? "" : `<button class="back" data-act="go" data-v="home">‹ Home</button>`}
+    <div class="status-head ${ended?"safe":""}">
+      <span class="ref">${esc(a.id)}</span>
+      <b>${ended?"Alert cancelled":"SOS alert active"}</b>
+      <span style="font-size:12.5px">Activated ${fmtTime(a.at)}</span>
+    </div>
+    <dl class="kv">
+      <dt>Server</dt><dd>${a.synced?'<span class="tag ok">Saved</span>':a.relayed?'<span class="tag ok">Received via helper phones</span>':'<span class="tag warn">Queued, encrypted on phone</span>'}</dd>
+      ${S.net==="none" && a.status==="active" ? `<dt>Bluetooth beacon</dt><dd>${a.beacon==="relayed"?'<span class="tag ok">Relayed</span>':a.beacon==="searching"?'<span class="tag warn">Broadcasting, no phones in range</span>':'<span class="tag warn">Broadcasting…</span>'} ${sim()}</dd>`:""}
+      <dt>Location</dt><dd>${a.loc.kind==="current"?"Current":a.loc.kind==="helper"?`<b>Estimated from ${a.loc.n} nearby phone${a.loc.n>1?"s":""}</b>, ${Math.max(0,Math.round((Date.now()-a.loc.ts)/1000))} s ago`:"<b>Last known</b>, "+locAge+" min old"} · ±${a.loc.acc} m ${sim("Sample")}</dd>
+      <dt>Recording</dt><dd>Not recording ${sim("Simulated")}<br><span style="font-size:12px;color:var(--muted)">Camera and mic are blocked in this demo. Nothing is captured.</span></dd>
+      <dt>Police / EMS</dt><dd><span class="tag mut">Not connected</span><br><span style="font-size:12px;color:var(--muted)">No emergency-service integration yet. Call 10111 or 112 directly.</span></dd>
+    </dl>
+    ${a.trail && a.trail.length ? `
+    <b style="font-family:var(--f-display)">Movement trail while offline</b>
+    <div class="map">${mapSVG({trail:a.trail, helpers:a.status==="active"?H.list:[], lastKnown:true})}</div>
+    <div class="list">${a.trail.slice(-4).reverse().map((p,i)=>`
+      <div class="item"><div><div class="t" style="font-family:var(--f-mono);font-size:12.5px">${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}</div><div class="s">${fmtTime(p.t)} · seen by ${p.n} helper phone${p.n>1?"s":""}</div></div><span class="tag ${i===0?"ok":"mut"}">±${p.acc} m</span></div>`).join("")}</div>` : ""}
+    <b style="font-family:var(--f-display)">Trusted contacts</b>
+    <div class="list">${a.recipients.length? a.recipients.map(r=>{ const [l,c]=STATE_LABEL[r.state]; return `
+      <div class="item"><div style="min-width:0"><div class="t">${esc(r.name)}</div><div class="s">${esc(r.method)} ${sim()}</div></div><span class="tag ${c}">${l}</span></div>`}).join("")
+      : `<div class="item"><span class="s">No contacts set to receive alerts.</span></div>`}</div>
+    <div class="log" style="max-height:140px">${a.log.map(l=>`<div class="l">${fmtTime(l.t)}  ${esc(l.m)}</div>`).join("")}</div>
+    ${ended ? `<button class="btn ghost" data-act="${S.emergencyMode?"exitEmergency":"go"}" data-v="home">Done</button>`
+      : `<button class="btn ghost" data-act="askCancel">I'm safe, cancel alert</button>`}`;
+  },
+  location(){
+    const a = S.alerts[0];
+    const loc = S.net==="none" ? {...SAMPLE_LOC, kind:"last", ts:Date.now()-14*60000} : {...SAMPLE_LOC, kind:"current", ts:Date.now()};
+    return `
+    <button class="back" data-act="go" data-v="home">‹ Home</button>
+    <h2>Location</h2>
+    <p class="lead">TechNov only shares your location during an alert, and only with contacts you switched on.</p>
+    <div class="map">${mapSVG({helpers:H.list})}</div>
+    <dl class="kv">
+      <dt>Place</dt><dd>${esc(loc.place)} ${sim("Sample")}</dd>
+      <dt>Coordinates</dt><dd>${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}</dd>
+      <dt>Type</dt><dd>${loc.kind==="current"?"Current location":"<b>Last known location</b>"}</dd>
+      <dt>Timestamp</dt><dd>${fmtTime(loc.ts)}</dd>
+      <dt>Accuracy</dt><dd>±${loc.acc} m</dd>
+    </dl>
+    <div class="notice">Device GPS is not available inside this demo, so a fixed sample point is shown. An old location is always labelled "last known" with its time, never as live.</div>
+    <b style="font-family:var(--f-display)">Nearby TechNov phones ${sim("Simulated Bluetooth")}</b>
+    <p class="lead" style="font-size:12.5px">If you lose signal during an SOS, these phones can pass your alert on. You only see anonymous IDs that change every 15 minutes.</p>
+    <div class="list">${H.list.length ? H.list.map(h=>`
+      <div class="item"><div><div class="t" style="font-family:var(--f-mono);font-size:13px">helper·${h.anon}</div><div class="s">${h.rssi} dBm · about ${Math.round(h.est)} m away</div></div>
+      <span class="tag ${h.signal?"ok":"mut"}">${h.signal?"Has signal":"No signal"}</span></div>`).join("")
+      : `<div class="item"><span class="s">No TechNov phones in Bluetooth range right now.</span></div>`}</div>`;
+  },
+  history(){
+    return `
+    <button class="back" data-act="go" data-v="home">‹ Home</button>
+    <h2>Alert history</h2>
+    <p class="lead">Only your own alerts. Recordings and exact locations need extra checks.</p>
+    <div class="list" id="histlist"><div class="item"><span class="s">Loading…</span></div></div>`;
+  },
+  settings(){
+    const u = db.users.find(x=>x.id===S.session.user.id);
+    return `
+    <button class="back" data-act="go" data-v="home">‹ Home</button>
+    <h2>Settings & privacy</h2>
+    <div class="list">
+      <div class="item"><div><div class="t">Fingerprint / face sign-in</div><div class="s">Uses your phone's own biometrics. TechNov never sees or stores them. ${sim()}</div></div>
+        <button class="switch" role="switch" aria-checked="${u.biometric}" aria-label="Biometric sign-in" data-act="toggleBio"></button></div>
+      <div class="item"><div><div class="t">Help others nearby</div><div class="s">Let your phone pass on SOS beacons from TechNov users near you. You never see who they are, and it uses no data of yours beyond a tiny upload. ${sim("Simulated Bluetooth")}</div></div>
+        <button class="switch" role="switch" aria-checked="${H.optIn}" aria-label="Help others nearby" data-act="toggleHelp"></button></div>
+      <div class="item"><div><div class="t">Auto sign-out</div><div class="s">After 3 minutes without activity</div></div><span class="tag ok">On</span></div>
+      <div class="item"><div><div class="t">Emergency SOS without sign-in</div><div class="s">Works from the start screen on this phone only. It cannot open your history.</div></div><span class="tag ok">On</span></div>
+      <div class="item"><div><div class="t">Theft Lock</div><div class="s">If someone enters the wrong PIN 3 times or swaps the SIM, the phone locks, warns the holder it is recording, and uploads photos that can't be deleted. ${sim("Simulated capture")}</div></div><span class="tag ok">On</span></div>
+    </div>
+    <div class="panel" style="padding:14px">
+      <b style="font-family:var(--f-display)">Your data (POPIA)</b>
+      <dl class="kv" style="font-size:12.5px">
+        <dt>We collect</dt><dd>Name, email, trusted contacts, alert time and location</dd>
+        <dt>Why</dt><dd>To send your alert to the people you chose</dd>
+        <dt>Who sees it</dt><dd>You, and your contacts during an alert. Admins see metadata only.</dd>
+        <dt>Helper relay</dt><dd>When you help someone, only your phone's location and signal strength are sent with their alert. Your name and account are not.</dd>
+        <dt>Kept for</dt><dd>Alerts 12 months, relay sightings 30 days, recordings 90 days (proposed)</dd>
+      </dl>
+    </div>
+    <button class="btn ghost" data-act="deleteReq">Request account deletion</button>
+    <button class="btn" data-act="logout">Sign out</button>`;
+  }
+};
+
+function mapSVG(){
+  return `<svg viewBox="0 0 360 180" role="img" aria-label="Sample map">
+  <rect width="360" height="180" fill="var(--surface-2)"/>
+  <g stroke="var(--line)" stroke-width="10" fill="none">
+    <path d="M0 60H360M0 130H360M90 0V180M200 0V180M290 0V180"/></g>
+  <g stroke="var(--line)" stroke-width="3" fill="none"><path d="M0 95H360M145 0V180M245 0V180"/></g>
+  <rect x="152" y="68" width="40" height="22" fill="color-mix(in srgb,var(--ok) 25%,transparent)"/>
+  ${mapMarks(arguments[0]||{})}
+  <text x="10" y="172" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">SAMPLE · not your real location</text></svg>`;
+}
+function mapMarks({trail=[], helpers=[], lastKnown=false}){
+  // 0.8 px per metre, centred on the sample point
+  const X = lng => Math.min(352, Math.max(8, 100 + (lng-SAMPLE_LOC.lng)*mPerLng*0.8));
+  const Y = lat => Math.min(160, Math.max(8, 110 - (lat-SAMPLE_LOC.lat)*mPerLat*0.8));
+  if(!trail.length){
+    return `<circle cx="172" cy="80" r="26" fill="color-mix(in srgb,var(--sos) 15%,transparent)"/>
+      <circle cx="172" cy="80" r="7" fill="var(--sos)" stroke="var(--surface)" stroke-width="3"/>
+      ${helpers.map(h=>`<circle cx="${172+(h.lng-SAMPLE_LOC.lng)*mPerLng*0.8}" cy="${80-(h.lat-SAMPLE_LOC.lat)*mPerLat*0.8}" r="4.5" fill="var(--brand)" opacity=".75"/>`).join("")}`;
+  }
+  const last = trail[trail.length-1];
+  const pts = trail.map(p=>`${X(p.lng).toFixed(1)},${Y(p.lat).toFixed(1)}`).join(" ");
+  return `
+    ${lastKnown?`<rect x="${X(SAMPLE_LOC.lng)-5}" y="${Y(SAMPLE_LOC.lat)-5}" width="10" height="10" fill="none" stroke="var(--muted)" stroke-width="2"/>
+      <text x="${X(SAMPLE_LOC.lng)-6}" y="${Y(SAMPLE_LOC.lat)+18}" font-family="IBM Plex Mono, monospace" font-size="9" fill="var(--muted)">last GPS</text>`:""}
+    ${trail.length>1?`<polyline points="${pts}" fill="none" stroke="var(--sos)" stroke-width="2.5" stroke-dasharray="5 4"/>`:""}
+    ${trail.slice(0,-1).map(p=>`<circle cx="${X(p.lng)}" cy="${Y(p.lat)}" r="3.5" fill="var(--sos)" opacity=".55"/>`).join("")}
+    ${helpers.map(h=>`<circle cx="${X(h.lng)}" cy="${Y(h.lat)}" r="4.5" fill="${h.signal?"var(--brand)":"var(--muted)"}" opacity=".85"/>`).join("")}
+    <circle cx="${X(last.lng)}" cy="${Y(last.lat)}" r="${Math.max(8,last.acc*0.8)}" fill="color-mix(in srgb,var(--sos) 15%,transparent)"/>
+    <circle cx="${X(last.lng)}" cy="${Y(last.lat)}" r="6.5" fill="var(--sos)" stroke="var(--surface)" stroke-width="3"/>`;
+}
+
+function sheetHTML(){
+  if(S.sheet==="pin"){
+    return `<div class="overlay"><div class="sheet" role="dialog" aria-label="Enter Safe PIN">
+      <b style="font-family:var(--f-display);font-size:18px">Enter your Safe PIN</b>
+      <div class="pinrow">${[0,1,2,3].map(i=>`<span class="${i<S.pin.length?"f":""}"></span>`).join("")}</div>
+      ${errLine("pin")}
+      <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-act="pin" data-v="${n}">${n}</button>`).join("")}
+        <button data-act="pinClose">Close</button><button data-act="pin" data-v="0">0</button><button data-act="pinDel">⌫</button></div>
+    </div></div>`;
+  }
+  if(S.sheet==="bio"){
+    return `<div class="overlay"><div class="sheet" role="dialog" aria-label="Biometric prompt">
+      <b style="font-family:var(--f-display);font-size:18px">Phone fingerprint prompt ${sim()}</b>
+      <p style="margin:0;color:var(--muted);font-size:13px">On a real phone this is the operating system's own dialog. TechNov only receives "matched" or "not matched".</p>
+      <div style="text-align:center;font-size:52px">◉</div>
+      <button class="btn" data-act="bioOk">Touch sensor (match)</button>
+      <button class="btn ghost" data-act="pinClose">Cancel</button>
+    </div></div>`;
+  }
+  return "";
+}
+
+/* ---------- render ---------- */
+function render(){
+  const scr = $("screen");
+  const keep = {}; scr.querySelectorAll("input").forEach(i=>{ if(i.id) keep[i.id] = i.type==="checkbox"? i.checked : i.value; });
+  const active = document.activeElement && scr.contains(document.activeElement) ? document.activeElement.id : null;
+  scr.innerHTML = (S.tamper ? tamperHTML() : (screens[S.screen]?.() || "")) + sheetHTML() + (S.toast?`<div class="toast" role="status">${esc(S.toast)}</div>`:"");
+  scr.querySelectorAll("input").forEach(i=>{ if(i.id in keep && !S.err.__reset){ if(i.type==="checkbox") i.checked = keep[i.id]; else if(i.dataset.live!=="pw") i.value = keep[i.id]; } });
+  if(active){ const el=$(active); if(el){ el.focus(); if(el.setSelectionRange && el.type!=="email") try{ el.setSelectionRange(el.value.length, el.value.length);}catch(_){} } }
+  const n = {online:["","Online"],cell:["cell","No data · SMS"],none:["none","No signal"]}[S.net];
+  $("netbar").innerHTML = `<span class="dot ${n[0]}"></span>${n[1]}`;
+  if(S.screen==="history") loadHistory();
+}
+
+async function loadHistory(){
+  const box = $("histlist"); if(!box || loadHistory.busy) return; loadHistory.busy = true;
+  let rows = [];
+  try{
+    if(S.net!=="online") throw new Error("offline");
+    rows = await api.listAlerts(S.session.token);
+  }catch(e){ loadHistory.busy = false; if(e.status===401) return expire(); rows = []; }
+  loadHistory.busy = false;
+  const local = S.alerts.filter(a=>!a.synced);
+  const all = [...local.map(a=>({id:a.id, at:a.at, status:"queued on phone"})), ...rows.map(r=>({id:r.id, at:r.at, status:r.status==="duress"?"cancelled":r.status}))]
+    .filter((v,i,arr)=>arr.findIndex(x=>x.id===v.id)===i);
+  const b = $("histlist"); if(!b) return;
+  b.innerHTML = all.length ? all.map(a=>`<div class="item"><div><div class="t" style="font-family:var(--f-mono);font-size:13px">${esc(a.id)}</div><div class="s">${fmtDate(a.at)} · ${SAMPLE_LOC.place.split(",")[1]}</div></div><span class="tag ${a.status==="active"?"sos":a.status==="cancelled"?"ok":"warn"}">${esc(a.status)}</span></div>`).join("")
+    : `<div class="item"><span class="s">${S.net!=="online"?"You're offline. History loads when you reconnect.":"No alerts yet."}</span></div>`;
+}
+
+/* ---------- inspector ---------- */
+function renderInspector(){
+  const ut = $("userstbl"); if(!ut) return;
+  ut.innerHTML = `<table><thead><tr><th>id</th><th>email</th><th>role</th><th>verified</th><th>password_hash</th><th>salt</th><th>failed</th><th>locked</th></tr></thead><tbody>${
+    db.users.map(u=>`<tr><td>${u.id}</td><td>${esc(u.email)}</td><td>${u.role}</td><td>${u.verified?1:0}</td><td>pbkdf2$100000$${u.hash.slice(0,16)}…</td><td>${u.salt.slice(0,10)}…</td><td>${u.failed}</td><td>${u.lockUntil>Date.now()?Math.ceil((u.lockUntil-Date.now())/1000)+"s":"–"}</td></tr>`).join("")}</tbody></table>`;
+  $("auditlog").innerHTML = db.audit.length ? db.audit.map(a=>`<div class="l"><span class="${a.result==="deny"?"deny":a.result==="warn"?"warnc":"allow"}">${a.result==="deny"?"DENY ":a.result==="warn"?"ALERT":"ALLOW"}</span> ${fmtTime(a.t)}  ${esc(a.actor)} · ${esc(a.action)}${a.sql?`\n      <span class="sql">${esc(a.sql)}</span>`:""}</div>`).join("") : `<div class="l">No events yet.</div>`;
+  $("queuebox").innerHTML = queue.length
+    ? `<p>Stored on the phone, unreadable without the device key. Switch back to Online to send.</p>` + queue.map(q=>`<div class="result"><b>${esc(q.ref)}</b>\niv: ${q.iv}\nciphertext: ${q.ct.slice(0,96)}…</div>`).join("")
+    : `<p>Empty. Set the phone to "No signal" and press SOS to see an encrypted entry.</p>`;
+  const eb = $("evidencebox");
+  if(eb) eb.innerHTML = db.evidence.length
+    ? `<div class="tbl"><table><thead><tr><th>id</th><th>alert</th><th>captured</th><th>state</th></tr></thead><tbody>${db.evidence.map(f=>`<tr><td>${f.id}</td><td>${esc(f.ref||"–")}</td><td>${fmtTime(f.t)}</td><td>on server · locked</td></tr>`).join("")}</tbody></table></div>`
+    : `<p>Empty. Trigger Theft Lock on the phone (wrong PIN ×3, or the Simulate theft button) to capture evidence.</p>`;
+  const ht = $("helpertbl");
+  if(ht) ht.innerHTML = H.list.length
+    ? `<table><thead><tr><th>anon id</th><th>RSSI</th><th>est. distance</th><th>true distance</th><th>signal</th></tr></thead><tbody>${
+        H.list.map(h=>`<tr><td>helper·${h.anon}</td><td>${h.rssi} dBm</td><td>${h.est.toFixed(1)} m</td><td>${Math.hypot((h.lat-H.truePos.lat)*mPerLat,(h.lng-H.truePos.lng)*mPerLng).toFixed(1)} m</td><td>${h.signal?"yes · can relay":"no · store & forward"}</td></tr>`).join("")}</tbody></table>`
+    : `<table><tbody><tr><td>No TechNov phones in Bluetooth range.</td></tr></tbody></table>`;
+  renderSession(); renderBeacon();
+}
+function renderBeacon(){
+  const b = $("beaconbox"); if(!b) return;
+  if(!S.beacon){ b.innerHTML = `<dt>Your beacon</dt><dd>Created after first sign-in on this phone</dd>`; return; }
+  const left = Math.max(0, Math.ceil((BEACON_ROTATE_MS-(Date.now()-S.beacon.since))/1000));
+  b.innerHTML = `<dt>Your beacon ID</dt><dd style="font-family:var(--f-mono);font-size:12px">${S.beacon.id.slice(0,12)}…</dd>
+    <dt>Rotates in</dt><dd style="font-family:var(--f-mono)">${Math.floor(left/60)}:${String(left%60).padStart(2,"0")}</dd>
+    <dt>Distance formula</dt><dd style="font-family:var(--f-mono);font-size:12px">d = 10^((−59 − RSSI) / 22)</dd>
+    <dt>Position</dt><dd>Weighted average of helper GPS, weight = 1 / d²</dd>`;
+}
+function renderSession(){
+  const box = $("sessbox"); if(!box) return;
+  if(!S.session){ box.innerHTML = `<dt>Status</dt><dd>Signed out${S.device.configured?" · Emergency SOS enabled on this phone":""}</dd>`; return; }
+  const s = db.sessions[S.session.token];
+  const left = s ? Math.max(0, Math.ceil((SESSION_IDLE_MS-(Date.now()-s.last))/1000)) : 0;
+  box.innerHTML = `<dt>User</dt><dd>${esc(S.session.user.email)} (${S.session.user.role})</dd>
+    <dt>Token</dt><dd style="font-family:var(--f-mono);font-size:12px">${S.session.token.slice(0,8)}…${S.session.token.slice(-6)} (256-bit)</dd>
+    <dt>Idle sign-out in</dt><dd style="font-family:var(--f-mono)">${Math.floor(left/60)}:${String(left%60).padStart(2,"0")}</dd>`;
+}
+function expire(){
+  S.session = null; S.contacts = []; S.sheet = null;
+  go("login"); toast("You were signed out after 3 minutes without activity.");
+}
+
+/* ---------- actions ---------- */
+const actions = {
+  go:(d)=>{ S.confirmRemove=null; if(d.v==="register") S.regPw=""; go(d.v); },
+  helpers(d){
+    H.count = +d.v; spawnHelpers();
+    document.querySelectorAll("#helpseg button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.v===d.v));
+    const a = S.alerts.find(x=>x.id===S.activeRef);
+    // A phone that was searching picks up helpers as soon as one comes into range
+    if(H.count && a && a.status==="active" && S.net==="none" && !a.relayed) relayViaHelpers(a, {id:a.id, at:a.at, status:"active"});
+    render();
+  },
+  toggleHelp(){
+    H.optIn = !H.optIn;
+    audit(`user #${S.session.user.id}`,`Help others nearby = ${H.optIn}`,"allow","UPDATE users SET relay_opt_in = ? WHERE id = ?");
+    render(); toast(H.optIn ? "Your phone will pass on SOS beacons from people nearby." : "Your phone will no longer relay for others.");
+  },
+  theft(){ enterTamper("SIM swap detected"); },
+  powerTry(){
+    if(!S.tamper) return;
+    S.tamper.attempts++;
+    const a = S.alerts.find(x=>x.status==="active");
+    if(a) a.log.push({t:Date.now(), m:"Someone tried to switch the phone off. Blocked; photo captured."});
+    captureFrame(); toast("Power-off blocked. A photo was captured.");
+  },
+  unlockTamper(){ S.sheet="pin"; S.pin=""; S.err={}; render(); },
+  async net(d){
+    const prev = S.net; S.net = d.v;
+    document.querySelectorAll("#netseg button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.v===d.v));
+    render();
+    if(d.v==="online" && prev!=="online" && queue.length){ toast("Back online. Sending queued alert…"); await sleep(600); flushQueue(); }
+  },
+  emergency(){ S.emergencyMode = true; triggerSOS(); },
+  exitEmergency(){ S.emergencyMode = false; go("welcome"); },
+  sos(){ triggerSOS(); },
+  open(d){ S.activeRef = d.v; go("status"); },
+  askCancel(){ S.sheet="pin"; S.pin=""; S.err={}; render(); },
+  pin(d){ if(S.pin.length<4){ S.pin+=d.v; render(); if(S.pin.length===4) submitPin(); } },
+  pinDel(){ S.pin = S.pin.slice(0,-1); render(); },
+  pinClose(){ S.sheet=null; S.pin=""; render(); },
+  async resend(){
+    try{ await api.resend(S.pendingEmail); S.err={}; toast("A new code was sent to the demo inbox."); }
+    catch(e){ S.err.verify = e.message; render(); }
+  },
+  forgot(){ S.err.forgot = "If an account exists for that email, we'll send a reset link. (Simulated: no email is sent in this demo.)"; render(); },
+  bio(){ S.sheet="bio"; render(); },
+  async bioOk(){
+    S.sheet=null;
+    try{ const r = await api.biometricLogin(S.device.key); await afterLogin(r); }catch(e){ S.err.login=e.message; render(); }
+  },
+  async toggleBio(){
+    const u = db.users.find(x=>x.id===S.session.user.id);
+    try{ await api.setBiometric(S.session.token, !u.biometric, S.device.key); render(); toast(u.biometric?"Fingerprint sign-in turned on.":"Fingerprint sign-in turned off."); }catch(e){ if(e.status===401) expire(); }
+  },
+  async toggleC(d){
+    const c = S.contacts.find(x=>x.id===d.v); c.alerts = !c.alerts;
+    audit(`user #${S.session.user.id}`,`PATCH /contacts/${c.id} alerts=${c.alerts}`,"allow","UPDATE trusted_contacts SET receives_alerts = ? WHERE id = ? AND user_id = ?");
+    S.device.contacts = S.contacts.map(x=>({...x})); render();
+  },
+  askRm(d){ S.confirmRemove = d.v; render(); },
+  async rmC(d){
+    try{ await api.removeContact(S.session.token, d.v); S.contacts = S.contacts.filter(c=>c.id!==d.v); S.device.contacts = S.contacts.map(x=>({...x})); S.confirmRemove=null; toast("Contact removed."); }
+    catch(e){ if(e.status===401) expire(); }
+  },
+  deleteReq(){ audit(`user #${S.session.user.id}`,"POST /account/deletion-request","allow","INSERT INTO deletion_requests (user_id, requested_at) VALUES (?, ?)"); toast("Deletion request received. We'll confirm by email within 30 days."); },
+  async logout(){ await api.logout(S.session.token); S.session=null; S.contacts=[]; go("welcome"); toast("Signed out. Emergency SOS still works from this screen."); renderInspector(); },
+
+  async t1(){
+    const out = $("testout");
+    if(!S.session){ out.textContent = "Sign in on the phone as lerato@demo.co.za first, then run this test."; return; }
+    try{ const a = await api.getAlert(S.session.token, THANDI_REF); out.textContent = "ALLOWED (unexpected): "+JSON.stringify(a); }
+    catch(e){ out.textContent = `GET /api/alerts/${THANDI_REF}\nAuthorization: Bearer ${S.session.token.slice(0,8)}…\n\n→ ${e.status} ${e.status===403?"Forbidden":""}\n"${e.message}"\n\nThe server checks the alert's owner on every request.`; }
+  },
+  async t2(){
+    try{ await api.getAlert(null, THANDI_REF); }
+    catch(e){ $("testout").textContent = `GET /api/alerts/${THANDI_REF}\n(no Authorization header)\n\n→ ${e.status} Unauthorized\n"${e.message}"`; }
+  },
+  async t3(){
+    const t = await api.adminLogin();
+    const rows = await api.adminListAlerts(t); await api.logout(t);
+    $("testout").textContent = `GET /api/admin/alerts  (role: admin)\n\n→ 200 OK, metadata only\n${JSON.stringify(rows,null,2)}\n\nNo coordinates, no recordings, no contact numbers.`;
+  },
+  async t4(){
+    const t = await api.adminLogin();
+    try{ await api.adminRecording(t, THANDI_REF, ""); }catch(e){ $("testout").textContent = `GET /api/admin/recordings/${THANDI_REF}\n\n→ ${e.status} Forbidden\n"${e.message}"`; }
+    await api.logout(t);
+  },
+  async t5(){
+    const t = await api.adminLogin();
+    const r = await api.adminRecording(t, THANDI_REF, "SAPS case 1182/10/2026 evidence request, approved by DPO");
+    await api.logout(t);
+    $("testout").textContent = `GET /api/admin/recordings/${THANDI_REF}\nX-Access-Reason: SAPS case 1182/10/2026 evidence request, approved by DPO\n\n→ 200 OK\n${JSON.stringify(r,null,2)}\n\nThe access is written to the privileged-access log (see audit log).`;
+  }
+};
+
+/* ---------- Theft Lock (anti-theft evidence mode) ---------- */
+async function enterTamper(reason){
+  if(S.tamper) return;
+  if(!S.device.userId && !S.session){ toast("Sign in on the phone first so there is an account to protect."); return; }
+  S.tamper = {since:Date.now(), reason, attempts:0};
+  const a = S.alerts.find(x=>x.status==="active");
+  if(a){ a.log.push({t:Date.now(), m:`Theft Lock triggered: ${reason}. Phone locked, alert kept active.`}); render(); }
+  else { await triggerSOS(); }            // creates and sends an active alert, then render() shows the lock
+  audit(`device of user #${S.device.userId}`,`THEFT LOCK on: ${reason}`,"warn","UPDATE alerts SET theft_lock = 1 WHERE user_id = ? AND status = 'active'");
+  await captureFrame();
+  clearInterval(tamperTimer); tamperTimer = setInterval(captureFrame, 4000);
+  render();
+}
+async function captureFrame(){
+  if(!S.tamper) return;
+  const a = S.alerts.find(x=>x.status==="active");
+  const frame = {id:"EV"+String(db.evidence.length+1).padStart(3,"0"), userId:S.device.userId, ref:a?a.id:null, t:Date.now(), kind:S.tamper.reason};
+  await api.storeEvidence(frame);
+  render();
+}
+async function exitTamper(){
+  clearInterval(tamperTimer);
+  const a = S.alerts.find(x=>x.status==="active");
+  const n = db.evidence.filter(f=>f.userId===S.device.userId).length;
+  if(a) a.log.push({t:Date.now(), m:`Phone unlocked with Safe PIN. ${n} evidence frame${n!==1?"s":""} remain stored on the server.`});
+  audit(`user #${S.device.userId}`,"THEFT LOCK cleared with correct Safe PIN","allow");
+  S.tamper = null; S.sheet = null; S.pin = ""; S.pinTries = 0;
+  go(S.session ? "home" : "welcome"); toast("Unlocked. The evidence already uploaded stays on the server.");
+}
+async function submitTamperPin(){
+  const u = db.users.find(x=>x.id===S.device.userId);
+  const fwd = await hashPassword(S.pin, u.pinSalt);
+  if(ctEqual(fwd.hash, u.pinHash)){ await exitTamper(); return; }
+  S.pin = ""; S.tamper.attempts++; S.err.pin = "Wrong PIN. This attempt was recorded as evidence.";
+  render(); await captureFrame();
+}
+function evThumb(f){
+  return `<div class="evt"><svg viewBox="0 0 60 60" aria-hidden="true"><rect width="60" height="60" fill="var(--code-bg)"/><circle cx="30" cy="24" r="10" fill="var(--muted)"/><path d="M13 53c0-10 7-16 17-16s17 6 17 16" fill="var(--muted)"/><text x="4" y="58" font-family="IBM Plex Mono, monospace" font-size="7" fill="#7FE0B0">${esc(f.id)}</text></svg><span>${fmtTime(f.t)}</span></div>`;
+}
+function tamperHTML(){
+  const el = Math.floor((Date.now()-S.tamper.since)/1000);
+  const u = db.users.find(x=>x.id===S.device.userId);
+  const frames = db.evidence.filter(f=>f.userId===S.device.userId);
+  return `
+  <div class="tamper">
+    <div class="tlock">🔒</div>
+    <h2>Phone locked</h2>
+    <p>This phone belongs to <b>${esc(u?u.name:"a TechNov user")}</b> and has an active emergency alert. You are being photographed as a theft deterrent. Please return it.</p>
+    <div class="evbar"><span class="rec"></span> Recording · ${frames.length} photo${frames.length!==1?"s":""} already uploaded ${sim("Simulated capture")}</div>
+    <div class="evgrid">${frames.slice(-6).reverse().map(evThumb).join("")}</div>
+    <button class="btn danger" data-act="powerTry">Power off</button>
+    <button class="btn" data-act="unlockTamper">Unlock with Safe PIN</button>
+    <div class="tfoot">Locked ${Math.floor(el/60)}:${String(el%60).padStart(2,"0")} · Each photo is sent to the TechNov server the instant it is taken, so wiping this phone cannot erase it.</div>
+    <div class="notice">Honest limit: an app cannot fully stop a forced power-off. On Android, device-admin or kiosk mode makes it harder; the real protection is that the alert and photos are already on the server. The holder is told they are being recorded. ${sim("Simulated capture")}</div>
+  </div>`;
+}
+
+async function submitPin(){
+  if(S.tamper){ return submitTamperPin(); }
+  const a = S.alerts.find(x=>x.id===S.activeRef);
+  try{
+    const res = await api.cancelAlert(S.session?.token, S.device.key, a.id, S.pin);
+    a.status = res;
+    S.sheet = null; S.pin = "";
+    if(res==="cancelled"){
+      a.log.push({t:Date.now(), m:"Cancelled with Safe PIN. Contacts told you are safe (simulated)."});
+    } else {
+      // The phone looks identical to a normal cancel; the truth is only on the server.
+      a.log.push({t:Date.now(), m:"Cancelled with Safe PIN. Contacts told you are safe (simulated)."});
+    }
+    render();
+  }catch(e){
+    S.pinTries++; S.pin = "";
+    if(S.pinTries>=3){ S.sheet=null; S.pinTries=0; render(); enterTamper("3 wrong PIN attempts"); return; }
+    S.err.pin = "Wrong PIN. Try again.";
+    render();
+  }
+}
+
+const BEACON_ROTATE_MS = 15*60*1000;
+function rotateBeacon(u){
+  // A fresh random ID; the server keeps the current and previous one so in-flight relays still match.
+  S.beacon = {id:hex(rand(16)), since:Date.now()};
+  u.beaconIds = [...(u.beaconIds||[]).slice(-1), S.beacon.id];
+  audit(`user #${u.id}`,"Bluetooth beacon ID rotated","allow","UPDATE beacon_ids SET current_id = ?, previous_id = current_id WHERE user_id = ?");
+}
+async function afterLogin(r){
+  S.session = r; S.err = {};
+  if(!S.device.key) S.device.key = hex(rand(16));
+  const u = db.users.find(x=>x.id===r.user.id);
+  if(!u.deviceKey) u.deviceKey = S.device.key;
+  if(!S.beacon || S.device.userId!==u.id) rotateBeacon(u);
+  S.device.configured = true; S.device.userId = r.user.id;
+  S.contacts = (await api.listContacts(r.token)).map(c=>({...c}));
+  S.device.contacts = S.contacts.map(c=>({...c}));
+  go("home"); renderInspector();
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", e=>{
+  const el = e.target.closest("[data-act]"); if(!el || el.disabled) return;
+  e.preventDefault();
+  if(S.session){ const s = db.sessions[S.session.token]; if(s) s.last = Date.now(); }
+  actions[el.dataset.act]?.(el.dataset, el);
+});
+document.addEventListener("input", e=>{
+  if(e.target.dataset.live==="pw"){
+    S.regPw = e.target.value;
+    const pw = S.regPw, rules = [[pw.length>=8,"8+ characters"],[/[A-Z]/.test(pw),"Uppercase letter"],[/\d/.test(pw),"Number"],[/[^A-Za-z0-9]/.test(pw),"Symbol"]];
+    const c = $("pwchecks"); if(c) c.innerHTML = rules.map(r=>`<span class="${r[0]?"on":""}">${r[0]?"✓":"○"} ${r[1]}</span>`).join("");
+  }
+});
+document.addEventListener("submit", async e=>{
+  e.preventDefault();
+  const id = e.target.id, v = k => ($(k)?.value || "").trim();
+  if(id==="f-register"){
+    const name=v("r-name"), email=v("r-email").toLowerCase(), pw=$("r-pw").value, pw2=$("r-pw2").value, pin=v("r-pin");
+    let msg = "";
+    if(name.length<2) msg = "Enter your full name.";
+    else if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) msg = "Enter a valid email address.";
+    else if(!(pw.length>=8 && /[A-Z]/.test(pw) && /\d/.test(pw) && /[^A-Za-z0-9]/.test(pw))) msg = "Your password needs all four items in the checklist.";
+    else if(pw!==pw2) msg = "The two passwords do not match.";
+    else if(!/^\d{4}$/.test(pin)) msg = "Your Safe PIN must be exactly 4 digits.";
+    else if(pin===pin.split("").reverse().join("")) msg = "Pick a PIN that reads differently backwards, like 1357.";
+    else if(!$("r-consent").checked) msg = "Please accept the privacy notice to continue.";
+    if(msg){ S.err.register = msg; render(); return; }
+    await api.register({name,email,password:pw,pin});
+    S.pendingEmail = email; S.regPw = ""; go("verify");
+  }
+  if(id==="f-verify"){
+    try{ await api.verify(S.pendingEmail, v("v-code")); go("login"); toast("Email verified. You can sign in now."); const le=$("l-email"); if(le) le.value=S.pendingEmail; }
+    catch(err){ S.err.verify = err.message; render(); }
+  }
+  if(id==="f-login"){
+    const btn = $("l-submit"); if(btn){ btn.disabled = true; btn.textContent = "Checking…"; }
+    try{ const r = await api.login(v("l-email"), $("l-pw").value); await afterLogin(r); }
+    catch(err){ S.err.login = err.message; render(); const p=$("l-pw"); if(p) p.value=""; }
+  }
+  if(id==="f-contact"){
+    const name=v("c-name"), phone=v("c-phone").replace(/\s/g,""), rel=v("c-rel")||"Contact", method=$("c-method").value;
+    if(name.length<2){ S.err.contact="Enter the contact's name."; render(); return; }
+    if(!/^(\+27|0)[6-8]\d{8}$/.test(phone)){ S.err.contact="Enter a South African mobile number, like 072 123 4567."; render(); return; }
+    try{
+      const row = await api.addContact(S.session.token, {name, phone, relationship:rel, method, alerts:true});
+      S.contacts.push({...row}); S.device.contacts = S.contacts.map(x=>({...x}));
+      S.err = {}; e.target.reset(); render(); toast(`${name} will receive your alerts.`);
+    }catch(err){ if(err.status===401) expire(); }
+  }
+});
+
+/* ---------- seed & timers ---------- */
+let THANDI_REF = "TN-20261024-4821";
+(async function init(){
+  render();
+  deviceKeyAES = await crypto.subtle.generateKey({name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+  const mk = async (name,email,pw,role,pin) => { const h=await hashPassword(pw); const p=await hashPassword(pin); const u={id:db.nextId++,name,email,role,salt:h.salt,hash:h.hash,pinSalt:p.salt,pinHash:p.hash,verified:true,failed:0,lockUntil:0,biometric:false}; db.users.push(u); return u; };
+  const lerato = await mk("Lerato Mokoena","lerato@demo.co.za","Safe@2026","user","1357");
+  const thandi = await mk("Thandi Ndlovu","thandi@demo.co.za","Thandi#2026","user","2468");
+  await mk("TechNov Admin","admin@technov.co.za","Admin@2026","admin","9021");
+  db.contacts.push({id:"c90",userId:lerato.id,name:"Nomsa (Mom)",phone:"0721234567",relationship:"Mother",method:"SMS",alerts:true});
+  db.contacts.push({id:"c91",userId:lerato.id,name:"Sipho",phone:"0839876543",relationship:"Brother",method:"Push",alerts:true});
+  db.alerts.push({id:THANDI_REF, userId:thandi.id, at:new Date("2026-10-24T21:14:00+02:00").getTime(), status:"cancelled", lat:-25.7536, lng:28.2311});
+  audit("system","Seeded demo accounts (passwords hashed at startup)","allow");
+  spawnHelpers();
+  render();
+})();
+setInterval(()=>{
+  $("clock").textContent = new Date().toLocaleTimeString("en-ZA",{hour:"2-digit",minute:"2-digit",timeZone:"Africa/Johannesburg"});
+  renderSession(); renderBeacon();
+  if(S.beacon && Date.now()-S.beacon.since > BEACON_ROTATE_MS){ const u = db.users.find(x=>x.id===S.device.userId); if(u) rotateBeacon(u); }
+  if(S.tamper){ render(); }
+  if(S.session){ const s = db.sessions[S.session.token]; if(!s || Date.now()-s.last > SESSION_IDLE_MS){ if(s) delete db.sessions[S.session.token]; audit(`user #${S.session.user.id}`,"SESSION expired after 3 min idle","deny"); expire(); } }
+}, 1000);
+document.addEventListener("keydown", ()=>{ if(S.session){ const s=db.sessions[S.session.token]; if(s) s.last=Date.now(); } });
+</script>

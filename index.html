@@ -43,7 +43,7 @@ header.top{max-width:1180px;margin:0 auto 18px;display:flex;flex-wrap:wrap;gap:8
 header.top h1{font-family:var(--f-display);font-weight:800;font-size:26px;letter-spacing:-.01em;margin:0}
 header.top p{margin:0;color:var(--muted);max-width:62ch}
 .tag{display:inline-block;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:4px;border:1px solid currentColor;line-height:1.4;white-space:nowrap}
-.tag.sim{color:var(--sim)} .tag.ok{color:var(--ok)} .tag.warn{color:var(--warn)} .tag.sos{color:var(--sos)} .tag.mut{color:var(--muted)}
+.tag.sim{color:var(--sim)} .tag.ok{color:var(--ok)} .tag.warn{color:var(--warn)} .tag.sos,.tag.crit{color:var(--sos)} .tag.mut{color:var(--muted)}
 
 /* Phone */
 .phone{position:sticky;top:16px;width:100%;max-width:400px;margin:0 auto;border-radius:38px;border:10px solid #0B0E18;background:var(--surface);overflow:hidden;box-shadow:0 20px 50px rgba(10,14,30,.25)}
@@ -116,6 +116,22 @@ header.top p{margin:0;color:var(--muted);max-width:62ch}
 .evt svg{display:block;width:100%;height:auto}
 .evt span{position:absolute;right:3px;bottom:2px;font-family:var(--f-mono);font-size:8px;color:#fff;background:rgba(0,0,0,.55);padding:0 3px;border-radius:3px}
 .tfoot{font-size:11.5px;color:var(--muted)}
+.fakecall{position:absolute;inset:0;background:#0b0e18;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:54px 20px 40px;text-align:center;z-index:30}
+.fc-top{display:flex;flex-direction:column;gap:8px;margin-top:30px}
+.fc-name{font-family:var(--f-display);font-size:34px;font-weight:800}
+.fc-sub{opacity:.7;font-size:14px}
+.fc-actions{display:flex;gap:46px}
+.fc-actions.two{justify-content:space-between;width:100%;max-width:280px}
+.fc-accept,.fc-decline,.fc-end{border:0;border-radius:50%;width:70px;height:70px;color:#fff;font-size:12px;cursor:pointer}
+.fc-accept{background:#17784c}.fc-decline,.fc-end{background:#d7263d}
+@media (prefers-reduced-motion:no-preference){.fc-accept{animation:pulse2 1.3s ease-in-out infinite}@keyframes pulse2{50%{box-shadow:0 0 0 10px rgba(23,120,76,.35)}}}
+.calc{position:absolute;inset:0;background:#000;color:#fff;display:flex;flex-direction:column;z-index:30}
+.calc-screen{flex:1;display:flex;align-items:flex-end;justify-content:flex-end;padding:20px 22px;font-size:52px;font-weight:300;font-variant-numeric:tabular-nums;overflow:hidden;word-break:break-all}
+.calc-pad{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#1a1a1a}
+.calc-pad button{border:0;background:#333;color:#fff;font-size:24px;padding:22px 0;cursor:pointer}
+.calc-pad button.op{background:#5a5a5a}.calc-pad button.eq{background:#f59e0b}
+.danger-banner{border:1px solid var(--sos);background:color-mix(in srgb,var(--sos) 10%,transparent);color:var(--sos);border-radius:12px;padding:10px 12px;font-size:13px;font-weight:600;display:flex;gap:8px;align-items:flex-start}
+.danger-banner button{background:none;border:0;color:inherit;text-decoration:underline;cursor:pointer;padding:0;font:inherit}
 
 /* Inspector */
 .insp{display:flex;flex-direction:column;gap:18px;min-width:0}
@@ -403,6 +419,11 @@ const api = {
     audit("any caller","DELETE evidence attempted","deny","-- refused: evidence_frames has no DELETE grant for any role");
     throw new ApiError(403,"Evidence cannot be deleted. The table has no delete permission for any role, including admins.");
   },
+  async createLiveShare(token, s){
+    const u = await this._auth(token);
+    audit(`user #${u.id}`,`POST /live-shares ${s.token.slice(0,6)}… for ${s.minutes} min`,"allow","INSERT INTO live_shares (user_id, contact_id, token_hash, expires_at) VALUES (?, ?, ?, ?)");
+    return {ok:true};
+  },
   async contactView(shareToken){
     await sleep(150);
     const a = db.alerts.find(x=>x.shareToken===shareToken);
@@ -584,11 +605,56 @@ const S = {
   screen:"welcome", net:"online", session:null, inbox:null, pendingEmail:null,
   device:{configured:false, userId:null, key:null, contacts:[]},
   contacts:[], alerts:[], activeRef:null, emergencyMode:false,
-  err:{}, toast:null, sheet:null, pin:"", pinTries:0, confirmRemove:null, regPw:"", beacon:null, tamper:null, bgRef:null, bgResult:null
+  err:{}, toast:null, sheet:null, pin:"", pinTries:0, confirmRemove:null, regPw:"", beacon:null, tamper:null, bgRef:null, bgResult:null,
+  walk:null, live:null, fake:null, calc:"0", inDanger:null
 };
 let tamperTimer;
 function go(screen){ S.screen = screen; S.err = {}; S.sheet = null; render(); $("screen").scrollTop = 0; }
 function toast(msg){ S.toast = msg; render(); clearTimeout(toast._t); toast._t = setTimeout(()=>{ S.toast=null; render(); }, 3200); }
+
+/* ---------- Area safety: danger zones + recent cases ---------- */
+function mmss(ms){ ms=Math.max(0,ms); const s=Math.round(ms/1000); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+const DANGER_ZONES = [
+  {name:"Church Square precinct", lat:-25.7461, lng:28.1881, r:320, level:"high", note:"Snatch-and-grab and phone theft, worst at dusk"},
+  {name:"Station taxi rank", lat:-25.7529, lng:28.1935, r:280, level:"high", note:"Reported assaults and robberies after dark"},
+  {name:"Burgers Park edge", lat:-25.7555, lng:28.1890, r:220, level:"moderate", note:"Occasional muggings when quiet"}
+];
+// Anonymised, pattern-level reports — type, approximate area, time. Never names or exact addresses.
+const RECENT_INCIDENTS = [
+  {type:"Gender-based violence report", area:"Pretoria West", when:"6 h ago", dist:"1.1 km", level:"high"},
+  {type:"Attempted mugging", area:"Church Square", when:"2 h ago", dist:"300 m", level:"high"},
+  {type:"Harassment reported", area:"Church Street", when:"today", dist:"450 m", level:"moderate"},
+  {type:"Phone snatching", area:"Station precinct", when:"yesterday", dist:"800 m", level:"moderate"},
+  {type:"Assault reported", area:"Burgers Park", when:"yesterday", dist:"650 m", level:"high"}
+];
+function zoneAt(lat,lng){ for(const z of DANGER_ZONES){ if(Math.hypot((lat-z.lat)*111000,(lng-z.lng)*100500)<=z.r) return z; } return null; }
+function walkExpired(w){
+  toast("Safe-walk check-in missed — sending SOS.");
+  triggerSOS();
+  const a=S.alerts.find(x=>x.status==="active"); if(a) a.log.unshift({t:Date.now(), m:`Auto-SOS: safe walk to "${w.note||"destination"}" was not confirmed in time`});
+}
+function evalCalc(str){
+  const t=String(str).match(/(\d+\.?\d*|[+\-*/%])/g); if(!t) return 0;
+  let terms=[parseFloat(t[0])||0];
+  for(let i=1;i<t.length;i+=2){ const op=t[i], n=parseFloat(t[i+1]); if(n===undefined||isNaN(n)) break;
+    if(op==="*") terms[terms.length-1]*=n; else if(op==="/") terms[terms.length-1]/=n; else if(op==="%") terms[terms.length-1]%=n; else terms.push(op==="-"?-n:n); }
+  return Math.round(terms.reduce((a,b)=>a+b,0)*1e8)/1e8;
+}
+let ringTimer, ringCtx, fakeTimer;
+function startRing(){
+  try{ navigator.vibrate && navigator.vibrate([600,300,600,300,600]); }catch(_){}
+  try{
+    ringCtx = ringCtx || new (window.AudioContext||window.webkitAudioContext)();
+    const beep=()=>{ const o=ringCtx.createOscillator(), g=ringCtx.createGain(); o.type="sine"; o.frequency.value=480; o.connect(g); g.connect(ringCtx.destination); g.gain.setValueAtTime(0.0001,ringCtx.currentTime); g.gain.exponentialRampToValueAtTime(0.13,ringCtx.currentTime+0.05); g.gain.exponentialRampToValueAtTime(0.0001,ringCtx.currentTime+0.55); o.start(); o.stop(ringCtx.currentTime+0.6); };
+    beep(); clearInterval(ringTimer); ringTimer=setInterval(beep,1600);
+  }catch(_){}
+}
+function stopRing(){ clearInterval(ringTimer); try{ navigator.vibrate && navigator.vibrate(0); }catch(_){} }
+function startFakeCall(delay){
+  const names=["Mom","Dad","Thabo","Aunty","Boss","Unknown"]; const name=names[Math.floor(Math.random()*names.length)];
+  clearTimeout(fakeTimer);
+  fakeTimer=setTimeout(()=>{ S.fake={name, answered:false, startedAt:0}; go("fakecall"); startRing(); }, delay);
+}
 
 /* ---------- SOS workflow ---------- */
 const SAMPLE_LOC = {lat:-25.7461, lng:28.1881, place:"Church Square area, Pretoria", acc:18};
@@ -727,9 +793,17 @@ const screens = {
       <div style="font-size:12px;color:var(--muted);text-align:center;max-width:30ch">Sends immediately. You can cancel afterwards with your Safe PIN.</div>
     </div>
     ${last && last.status==="active" ? `<button class="btn danger" data-act="open" data-v="${last.id}">Active alert ${esc(last.id)} · view status</button>` : ""}
+    ${S.inDanger ? `<div class="danger-banner">⚠<div>You're in a ${S.inDanger.level}-risk area — ${esc(S.inDanger.note)}. <button data-act="go" data-v="areasafety">See area safety</button></div></div>` : ""}
+    ${S.walk ? `<button class="btn ghost" data-act="go" data-v="safewalk" style="border-color:var(--warn);color:var(--warn)">⏱ Safe walk · check in within <b id="walk-home">${mmss(S.walk.endsAt-Date.now())}</b></button>` : ""}
+    ${S.live ? `<button class="btn ghost" data-act="go" data-v="livelocation" style="border-color:var(--ok);color:var(--ok)">📍 Sharing live location · <b id="live-home">${mmss(S.live.endsAt-Date.now())}</b> left</button>` : ""}
     <div class="tiles">
+      <button class="tile" data-act="go" data-v="safewalk"><b>Safe walk</b><span>Timed check-in home</span></button>
+      <button class="tile" data-act="go" data-v="areasafety"><b>Area safety</b><span>Danger zones, cases</span></button>
+      <button class="tile" data-act="go" data-v="livelocation"><b>Live location</b><span>Share for a set time</span></button>
+      <button class="tile" data-act="go" data-v="disguise"><b>Disguise & escape</b><span>Fake call, decoy</span></button>
+      <button class="tile" data-act="go" data-v="resources"><b>Help & resources</b><span>SA helplines, nearby</span></button>
       <button class="tile" data-act="go" data-v="contacts"><b>Trusted contacts</b><span>Who gets your alert</span></button>
-      <button class="tile" data-act="go" data-v="location"><b>Location</b><span>What contacts will see</span></button>
+      <button class="tile" data-act="go" data-v="location"><b>Location</b><span>What contacts see</span></button>
       <button class="tile" data-act="go" data-v="history"><b>Alert history</b><span>Your past alerts</span></button>
       <button class="tile" data-act="go" data-v="settings"><b>Settings & privacy</b><span>Biometrics, POPIA</span></button>
     </div>
@@ -849,6 +923,116 @@ const screens = {
     <button class="btn ghost" data-act="deleteReq">Request account deletion</button>
     <button class="btn" data-act="logout">Sign out</button>`;
   },
+  safewalk(){
+    if(S.walk){
+      const left = S.walk.endsAt - Date.now();
+      return `
+      <button class="back" data-act="go" data-v="home">‹ Home</button>
+      <h2>Safe walk active</h2>
+      <p class="lead">If you don't tap "I arrived safe" before the timer ends, TechNov automatically sends an SOS to your contacts with your location.</p>
+      <div class="status-head" style="background:var(--warn)"><span class="ref">Heading to: ${esc(S.walk.note||"destination")}</span><b id="walk-count">${mmss(left)}</b><span style="font-size:12.5px">left to check in</span></div>
+      <button class="btn" data-act="walkSafe">I arrived safe</button>
+      <button class="btn ghost" data-act="walkExtend">+5 minutes</button>
+      <button class="btn ghost" data-act="walkCancel">Cancel safe walk</button>`;
+    }
+    return `
+    <button class="back" data-act="go" data-v="home">‹ Home</button>
+    <h2>Safe walk</h2>
+    <p class="lead">Set a timer for your journey and check in when you arrive. If you don't, we alert your contacts automatically.</p>
+    <form id="f-walk" class="stack" novalidate>
+      <div class="field"><label for="w-note">Where are you going? (optional)</label><input id="w-note" placeholder="Home, taxi rank, campus"></div>
+      <div class="field"><label for="w-dur">Check in within</label><select id="w-dur"><option value="10">10 minutes</option><option value="20" selected>20 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option></select></div>
+      <label class="row" style="font-size:12.5px"><input type="checkbox" id="w-notify" checked> <span>Tell my contacts I started a safe walk</span></label>
+      <button class="btn" type="submit">Start safe walk</button>
+    </form>`;
+  },
+  livelocation(){
+    if(S.live){
+      const left = S.live.endsAt - Date.now();
+      return `
+      <button class="back" data-act="go" data-v="home">‹ Home</button>
+      <h2>Sharing live location</h2>
+      <p class="lead">${esc(S.live.contactName)} can follow where you are until the timer ends. This is not an emergency alert.</p>
+      <div class="map">${mapSVG({})}</div>
+      <dl class="kv"><dt>Sharing with</dt><dd>${esc(S.live.contactName)}</dd><dt>Ends in</dt><dd id="live-count" style="font-family:var(--f-mono)">${mmss(left)}</dd><dt>Private link</dt><dd style="font-family:var(--f-mono);font-size:12px">technov.co.za/live/${esc(S.live.token.slice(0,6))} ${sim()}</dd></dl>
+      <button class="btn danger" data-act="liveStop">Stop sharing</button>`;
+    }
+    const sharers = S.contacts;
+    if(!sharers.length) return `<button class="back" data-act="go" data-v="home">‹ Home</button><h2>Live location</h2><p class="lead">Add a trusted contact first, then you can share your live location with them.</p><button class="btn" data-act="go" data-v="contacts">Add a contact</button>`;
+    return `
+    <button class="back" data-act="go" data-v="home">‹ Home</button>
+    <h2>Live location</h2>
+    <p class="lead">Let one person follow your location for a set time. Lighter than an SOS — good for everyday peace of mind.</p>
+    <form id="f-live" class="stack" novalidate>
+      <div class="field"><label for="lv-contact">Share with</label><select id="lv-contact">${sharers.map(c=>`<option value="${c.id}">${esc(c.name)} (${esc(c.relationship)})</option>`).join("")}</select></div>
+      <div class="field"><label for="lv-dur">For</label><select id="lv-dur"><option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="60">60 minutes</option></select></div>
+      <button class="btn" type="submit">Start sharing</button>
+    </form>`;
+  },
+  resources(){
+    const lines = [
+      ["GBV Command Centre","0800 428 428","24/7 gender-based violence support"],
+      ["GBV USSD","*134*7355#","Free, works on any phone"],
+      ["SAPS emergency","10111","Police"],
+      ["Emergency (from mobile)","112","Routes to the nearest service"],
+      ["Childline SA","116","Children in danger"],
+      ["Lifeline counselling","0861 322 322","Trauma and crisis support"]
+    ];
+    return `
+    <button class="back" data-act="go" data-v="home">‹ Home</button>
+    <h2>Help & resources</h2>
+    <p class="lead">Real South African helplines. Tap a number to copy it, then dial from your phone.</p>
+    <div class="list">${lines.map(l=>`<div class="item"><div style="min-width:0"><div class="t">${esc(l[0])}</div><div class="s">${esc(l[2])}</div></div><button class="btn ghost" style="padding:7px 10px;font-family:var(--f-mono)" data-act="copyNum" data-v="${esc(l[1])}">${esc(l[1])}</button></div>`).join("")}</div>
+    <b style="font-family:var(--f-display)">Nearest help ${sim("Sample")}</b>
+    <div class="map">${mapSVG({pois:true})}</div>
+    <div class="list">
+      <div class="item"><div><div class="t">Pretoria Central SAPS</div><div class="s">Police station · about 650 m</div></div><span class="tag ok">Open</span></div>
+      <div class="item"><div><div class="t">Steve Biko Academic Hospital</div><div class="s">Hospital · about 2.4 km</div></div><span class="tag ok">24 h</span></div>
+    </div>`;
+  },
+  disguise(){
+    return `
+    <button class="back" data-act="go" data-v="home">‹ Home</button>
+    <h2>Disguise & escape</h2>
+    <p class="lead">Discreet ways to leave a situation, or to hide the app if someone takes your phone.</p>
+    <div class="list">
+      <div class="item"><div style="min-width:0"><div class="t">Fake incoming call</div><div class="s">A realistic call screen gives you a reason to step away.</div></div><button class="btn" style="padding:8px 12px" data-act="fakeCallNow">Call now</button></div>
+      <div class="item"><div style="min-width:0"><div class="t">Fake call in 10 seconds</div><div class="s">Put the phone down, then "answer" when it rings.</div></div><button class="btn ghost" style="padding:8px 12px" data-act="fakeCallDelay">Set</button></div>
+      <div class="item"><div style="min-width:0"><div class="t">Decoy calculator</div><div class="s">Hides the app as a calculator. Type your Safe PIN then = to return.</div></div><button class="btn ghost" style="padding:8px 12px" data-act="decoyOpen">Open</button></div>
+    </div>`;
+  },
+  fakecall(){
+    const f = S.fake || {name:"Mom", answered:false};
+    if(f.answered){
+      return `<div class="fakecall"><div class="fc-top"><div class="fc-name">${esc(f.name)}</div><div class="fc-sub" id="fc-timer">00:00</div></div><div class="fc-actions"><button class="fc-end" data-act="fakeEnd">End</button></div></div>`;
+    }
+    return `<div class="fakecall"><div class="fc-top"><div class="fc-sub">Incoming call</div><div class="fc-name">${esc(f.name)}</div><div class="fc-sub">mobile</div></div><div class="fc-actions two"><button class="fc-decline" data-act="fakeEnd">Decline</button><button class="fc-accept" data-act="fakeAnswer">Accept</button></div></div>`;
+  },
+  decoy(){
+    const keys = ["C","±","%","÷","7","8","9","×","4","5","6","−","1","2","3","+","0",".","="];
+    return `<div class="calc"><div class="calc-screen" id="calc-screen">${esc(S.calc||"0")}</div><div class="calc-pad">${keys.map(k=>`<button data-act="calc" data-v="${k==="÷"?"div":k==="×"?"mul":k==="−"?"sub":k}" class="${k==="="?"eq":(["C","±","%","÷","×","−","+"].includes(k)?"op":"")}">${k}</button>`).join("")}</div></div>`;
+  },
+  areasafety(){
+    const z = S.inDanger;
+    const head = z ? (z.level==="high"?"var(--sos)":"var(--warn)") : "var(--ok)";
+    return `
+    <button class="back" data-act="go" data-v="home">‹ Home</button>
+    <h2>Area safety</h2>
+    <p class="lead">TechNov warns you when you enter an area with a recent pattern of incidents, so you can stay alert or take another route.</p>
+    <div class="status-head" style="background:${head};color:#fff">
+      <span class="ref">Your area now</span>
+      <b>${z ? (z.level==="high"?"High":"Moderate")+" risk" : "Low risk"}</b>
+      <span style="font-size:12.5px">${z ? esc(z.name)+" · "+esc(z.note) : "No active danger zones around you right now"}</span>
+    </div>
+    <div class="map">${mapSVG({zones:true})}</div>
+    <b style="font-family:var(--f-display)">Recent cases near you ${sim("Anonymised data")}</b>
+    <p style="font-size:12px;color:var(--muted);margin:0">Reported patterns only — type, area and time. No names, no exact addresses.</p>
+    <div class="list">${RECENT_INCIDENTS.map(i=>`<div class="item"><div style="min-width:0"><div class="t">${esc(i.type)}</div><div class="s">${esc(i.area)} · ${esc(i.dist)} away · ${esc(i.when)}</div></div><span class="tag ${i.level==="high"?"crit":"warn"}">${i.level}</span></div>`).join("")}</div>
+    <b style="font-family:var(--f-display)">Danger zones nearby</b>
+    <div class="list">${DANGER_ZONES.map(d=>`<div class="item"><div style="min-width:0"><div class="t">${esc(d.name)}</div><div class="s">${esc(d.note)}</div></div><span class="tag ${d.level==="high"?"crit":"warn"}">${d.level}</span></div>`).join("")}</div>
+    <p style="font-size:12px;color:var(--muted)">Zones and cases come from anonymised TechNov alerts and public crime data. They show patterns, never a specific person.</p>
+    <button class="btn ghost" data-act="${z?"leaveDanger":"enterDanger"}">${z?"Simulate leaving the area":"Simulate walking into a danger zone"}</button>`;
+  },
   consoleAdmin(){
     return consoleHead("Admin console", S.session.user, ["Manage user accounts (never their passwords)","Alert metadata — no location, no recordings","Open a recording only with a logged break-glass reason"]) + `
     <div class="lbl2">Users</div>
@@ -898,10 +1082,21 @@ function mapSVG(){
   ${mapMarks(arguments[0]||{})}
   <text x="10" y="172" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">SAMPLE · not your real location</text></svg>`;
 }
-function mapMarks({trail=[], helpers=[], lastKnown=false}){
+function mapMarks(o){
+  o = o || {};
+  const {trail=[], helpers=[], lastKnown=false} = o;
   // 0.8 px per metre, centred on the sample point
   const X = lng => Math.min(352, Math.max(8, 100 + (lng-SAMPLE_LOC.lng)*mPerLng*0.8));
   const Y = lat => Math.min(160, Math.max(8, 110 - (lat-SAMPLE_LOC.lat)*mPerLat*0.8));
+  if(o.zones){
+    return DANGER_ZONES.map(z=>{ const col = z.level==="high"?"var(--sos)":"var(--warn)"; const r = Math.min(70, z.r*0.14); return `<circle cx="${X(z.lng).toFixed(1)}" cy="${Y(z.lat).toFixed(1)}" r="${r.toFixed(1)}" fill="color-mix(in srgb,${col} 20%,transparent)" stroke="${col}" stroke-width="1.5"/>`; }).join("")
+      + `<circle cx="172" cy="80" r="6.5" fill="var(--brand)" stroke="var(--surface)" stroke-width="3"/><text x="180" y="78" font-family="IBM Plex Mono,monospace" font-size="9" fill="var(--muted)">you</text>`;
+  }
+  if(o.pois){
+    return `<circle cx="172" cy="80" r="6.5" fill="var(--brand)" stroke="var(--surface)" stroke-width="3"/><text x="180" y="78" font-family="IBM Plex Mono,monospace" font-size="9" fill="var(--muted)">you</text>
+      <rect x="112" y="52" width="11" height="11" rx="2" fill="var(--sos)"/><text x="104" y="48" font-family="IBM Plex Mono,monospace" font-size="9" fill="var(--muted)">SAPS</text>
+      <rect x="244" y="110" width="11" height="11" rx="2" fill="var(--ok)"/><text x="226" y="106" font-family="IBM Plex Mono,monospace" font-size="9" fill="var(--muted)">Hospital</text>`;
+  }
   if(!trail.length){
     return `<circle cx="172" cy="80" r="26" fill="color-mix(in srgb,var(--sos) 15%,transparent)"/>
       <circle cx="172" cy="80" r="7" fill="var(--sos)" stroke="var(--surface)" stroke-width="3"/>
@@ -1004,7 +1199,7 @@ async function loadHistory(){
   const all = [...local.map(a=>({id:a.id, at:a.at, status:"queued on phone"})), ...rows.map(r=>({id:r.id, at:r.at, status:r.status==="duress"?"cancelled":r.status}))]
     .filter((v,i,arr)=>arr.findIndex(x=>x.id===v.id)===i);
   const b = $("histlist"); if(!b) return;
-  b.innerHTML = all.length ? all.map(a=>`<div class="item"><div><div class="t" style="font-family:var(--f-mono);font-size:13px">${esc(a.id)}</div><div class="s">${fmtDate(a.at)} · ${SAMPLE_LOC.place.split(",")[1]}</div></div><span class="tag ${a.status==="active"?"sos":a.status==="cancelled"?"ok":"warn"}">${esc(a.status)}</span></div>`).join("")
+  b.innerHTML = all.length ? all.map(a=>`<div class="item"><div><div class="t" style="font-family:var(--f-mono);font-size:13px">${esc(a.id)}</div><div class="s">${fmtDate(a.at)} · ${SAMPLE_LOC.place.split(",")[1]}</div></div><span class="tag ${a.status==="active"?"crit":a.status==="cancelled"?"ok":"warn"}">${esc(a.status)}</span></div>`).join("")
     : `<div class="item"><span class="s">${S.net!=="online"?"You're offline. History loads when you reconnect.":"No alerts yet."}</span></div>`;
 }
 
@@ -1076,6 +1271,32 @@ const actions = {
     captureFrame(); toast("Power-off blocked. A photo was captured.");
   },
   unlockTamper(){ S.sheet="pin"; S.pin=""; S.err={}; render(); },
+  walkSafe(){ S.walk=null; go("home"); toast("Glad you got there safe."); },
+  walkExtend(){ if(S.walk){ S.walk.endsAt += 5*60000; render(); toast("Added 5 minutes."); } },
+  walkCancel(){ S.walk=null; go("home"); toast("Safe walk cancelled."); },
+  liveStop(){ S.live=null; go("home"); toast("Live location sharing stopped."); },
+  async copyNum(d){ try{ await navigator.clipboard.writeText(d.v); toast(`Copied ${d.v}`); }catch(e){ toast(`Dial ${d.v}`); } },
+  decoyOpen(){ S.calc="0"; go("decoy"); },
+  fakeCallNow(){ startFakeCall(0); },
+  fakeCallDelay(){ toast("A fake call will ring in 10 seconds."); startFakeCall(10000); },
+  fakeAnswer(){ if(S.fake){ S.fake.answered=true; S.fake.startedAt=Date.now(); } stopRing(); render(); },
+  fakeEnd(){ S.fake=null; stopRing(); clearTimeout(fakeTimer); go("disguise"); },
+  async calc(d){
+    const map={div:"÷",mul:"×",sub:"−"}; const disp = map[d.v] || d.v;
+    if(disp==="C"){ S.calc="0"; render(); return; }
+    if(disp==="±"){ S.calc = (S.calc && S.calc[0]==="-") ? S.calc.slice(1) : ("-"+(S.calc==="0"?"":S.calc)); render(); return; }
+    if(disp==="="){
+      const entry = S.calc;
+      if(S.session && /^-?\d{4}$/.test(entry)){ const u=db.users.find(x=>x.id===S.session.user.id); const h=await hashPassword(entry.replace("-",""), u.pinSalt); if(ctEqual(h.hash, u.pinHash)){ S.calc="0"; go("home"); toast("Welcome back."); return; } }
+      try{ S.calc = String(evalCalc(entry)); }catch(_){ S.calc="Error"; }
+      render(); return;
+    }
+    const opChar = {"÷":"/","×":"*","−":"-","+":"+","%":"%"}[disp];
+    const c = (S.calc==="0"||S.calc==="Error") ? "" : S.calc;
+    S.calc = c + (opChar || disp); render();
+  },
+  enterDanger(){ const z=DANGER_ZONES[0]; S.inDanger=z; try{ navigator.vibrate && navigator.vibrate(300); }catch(_){} go("areasafety"); toast(`⚠ Entering ${z.level}-risk area: ${z.note}`); },
+  leaveDanger(){ S.inDanger=null; go("areasafety"); toast("You've left the danger zone."); },
   async net(d){
     const prev = S.net; S.net = d.v;
     document.querySelectorAll("#netseg button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.v===d.v));
@@ -1342,6 +1563,22 @@ document.addEventListener("submit", async e=>{
       S.err = {}; e.target.reset(); render(); toast(`${name} will receive your alerts.`);
     }catch(err){ if(err.status===401) expire(); }
   }
+  if(id==="f-walk"){
+    const dur = +$("w-dur").value, note = v("w-note");
+    S.walk = {endsAt:Date.now()+dur*60000, duration:dur, note, startedAt:Date.now(), notify:$("w-notify").checked};
+    const on = S.contacts.filter(c=>c.alerts).map(c=>c.name);
+    go("safewalk");
+    toast(S.walk.notify && on.length ? `Told ${on.join(", ")} you're walking to ${note||"your destination"}.` : "Safe walk started.");
+    return;
+  }
+  if(id==="f-live"){
+    const cid = $("lv-contact").value, dur = +$("lv-dur").value, c = S.contacts.find(x=>x.id===cid);
+    const token = hex(rand(8));
+    try{ await api.createLiveShare(S.session.token, {contactId:cid, minutes:dur, token}); }catch(err){ if(err.status===401) return expire(); }
+    S.live = {contactName:c?c.name:"your contact", endsAt:Date.now()+dur*60000, token};
+    go("livelocation"); toast(`Sharing your live location with ${c?c.name:"your contact"}.`);
+    return;
+  }
 });
 
 /* ---------- seed & timers ---------- */
@@ -1370,7 +1607,12 @@ setInterval(()=>{
   renderSession(); renderBeacon();
   if(S.beacon && Date.now()-S.beacon.since > BEACON_ROTATE_MS){ const u = db.users.find(x=>x.id===S.device.userId); if(u) rotateBeacon(u); }
   if(S.tamper){ render(); }
-  if(S.session){ const s = db.sessions[S.session.token]; if(!s || Date.now()-s.last > SESSION_IDLE_MS){ if(s) delete db.sessions[S.session.token]; audit(`user #${S.session.user.id}`,"SESSION expired after 3 min idle","deny"); expire(); } }
+  if(S.walk){ const left=S.walk.endsAt-Date.now(); if(left<=0){ const w=S.walk; S.walk=null; walkExpired(w); } else { const a=$("walk-count"); if(a) a.textContent=mmss(left); const b=$("walk-home"); if(b) b.textContent=mmss(left); } }
+  if(S.live){ const left=S.live.endsAt-Date.now(); if(left<=0){ S.live=null; toast("Live location sharing ended."); if(S.screen==="livelocation"||S.screen==="home") render(); } else { const a=$("live-count"); if(a) a.textContent=mmss(left); const b=$("live-home"); if(b) b.textContent=mmss(left); } }
+  if(S.fake && S.fake.answered && S.screen==="fakecall"){ const t=$("fc-timer"); if(t) t.textContent=mmss(Date.now()-S.fake.startedAt); }
+  const busy = S.walk || S.live || S.tamper || S.fake;
+  if(S.session && busy){ const s = db.sessions[S.session.token]; if(s) s.last = Date.now(); }  // an active safety task keeps the session alive
+  if(S.session && !busy){ const s = db.sessions[S.session.token]; if(!s || Date.now()-s.last > SESSION_IDLE_MS){ if(s) delete db.sessions[S.session.token]; audit(`user #${S.session.user.id}`,"SESSION expired after 3 min idle","deny"); expire(); } }
 }, 1000);
 document.addEventListener("keydown", ()=>{ if(S.session){ const s=db.sessions[S.session.token]; if(s) s.last=Date.now(); } });
 </script>

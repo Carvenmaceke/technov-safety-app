@@ -239,7 +239,7 @@ async function hashPassword(pw, saltHex){
 
 /* ---------- simulated backend + MySQL ---------- */
 const SESSION_IDLE_MS = 3*60*1000;
-const db = { users:[], contacts:[], alerts:[], sessions:{}, codes:{}, audit:[], evidence:[], deletions:[], nextId:1 };
+const db = { users:[], contacts:[], alerts:[], sessions:{}, codes:{}, audit:[], evidence:[], deletions:[], requests:[], community:[], nextId:1 };
 
 function audit(actor, action, result, sql){
   db.audit.unshift({t:Date.now(), actor, action, result, sql});
@@ -424,6 +424,57 @@ const api = {
     audit(`user #${u.id}`,`POST /live-shares ${s.token.slice(0,6)}… for ${s.minutes} min`,"allow","INSERT INTO live_shares (user_id, contact_id, token_hash, expires_at) VALUES (?, ?, ?, ?)");
     return {ok:true};
   },
+  async listCounsellors(token){
+    const u = await this._auth(token);
+    audit(`user #${u.id}`,"GET /counsellors","allow","SELECT id, name, specialty, org, availability, distance FROM counsellors WHERE active = 1");
+    return db.users.filter(x=>x.role==="counsellor").map(c=>({id:c.id, name:c.name, ...c.profile}));
+  },
+  async requestCounsellor(token, counsellorId, note, anon){
+    const u = await this._auth(token);
+    const id = "REQ"+db.nextId++;
+    db.requests.push({id, counsellorId, fromUser:u.id, fromName: anon ? "Anonymous" : u.name.split(" ")[0], anon:!!anon, note, at:Date.now(), status:"new"});
+    audit(`user #${u.id}`,`POST /counsellors/${counsellorId}/requests ${anon?"(anonymous)":""}`,"allow","INSERT INTO support_requests (counsellor_id, from_user, anonymous, note) VALUES (?, ?, ?, ?)");
+    return {ok:true};
+  },
+  async counsellorQueue(token){
+    const u = await this._auth(token);
+    if(u.role!=="counsellor"){ audit(`user #${u.id}`,"GET /counsellor/requests: not a counsellor","deny"); throw new ApiError(403,"Counsellors only"); }
+    audit(`counsellor #${u.id}`,"GET /counsellor/requests","allow","SELECT id, from_name, anonymous, note, status, created_at FROM support_requests WHERE counsellor_id = ? ORDER BY created_at DESC");
+    return db.requests.filter(r=>r.counsellorId===u.id).map(r=>({id:r.id, from:r.fromName, anon:r.anon, note:r.note, at:fmtDate(r.at), status:r.status}));
+  },
+  async counsellorRespond(token, reqId){
+    const u = await this._auth(token);
+    if(u.role!=="counsellor"){ throw new ApiError(403,"Counsellors only"); }
+    const r = db.requests.find(x=>x.id===reqId && x.counsellorId===u.id);
+    if(!r){ audit(`counsellor #${u.id}`,`PATCH ${reqId}: not your request`,"deny"); throw new ApiError(403,"Not your request"); }
+    r.status = "accepted";
+    audit(`counsellor #${u.id}`,`PATCH /requests/${reqId}: accepted`,"allow","UPDATE support_requests SET status = 'accepted' WHERE id = ? AND counsellor_id = ?");
+    return {ok:true};
+  },
+  async listCommunity(token){
+    await this._auth(token);
+    return db.community.slice().sort((a,b)=>b.at-a.at).map(p=>({id:p.id, handle:p.handle, topic:p.topic, text:p.text, at:p.at, hearts:p.hearts, replies:p.replies.length}));
+  },
+  async postCommunity(token, {topic, text}){
+    const u = await this._auth(token);
+    const id = "p"+db.nextId++;
+    db.community.push({id, handle:handleGen(), topic, text, at:Date.now(), hearts:0, replies:[], byHash:"u"+u.id});
+    audit(`user #${u.id}`,"POST /community (shown anonymously)","allow","INSERT INTO community_posts (handle, topic, body, author_hash) VALUES (?, ?, ?, ?)  -- author_hash for moderation only, never shown");
+    return {id};
+  },
+  async replyCommunity(token, id, text){
+    const u = await this._auth(token);
+    const p = db.community.find(x=>x.id===id);
+    if(!p){ throw new ApiError(404,"Post not found"); }
+    p.replies.push({handle:handleGen(), text, at:Date.now(), byHash:"u"+u.id});
+    audit(`user #${u.id}`,`POST /community/${id}/replies (anonymous)`,"allow","INSERT INTO community_replies (post_id, handle, body, author_hash) VALUES (?, ?, ?, ?)");
+    return {ok:true};
+  },
+  async heartCommunity(token, id){
+    await this._auth(token);
+    const p = db.community.find(x=>x.id===id); if(p) p.hearts++;
+    return {hearts: p ? p.hearts : 0};
+  },
   async contactView(shareToken){
     await sleep(150);
     const a = db.alerts.find(x=>x.shareToken===shareToken);
@@ -606,7 +657,7 @@ const S = {
   device:{configured:false, userId:null, key:null, contacts:[]},
   contacts:[], alerts:[], activeRef:null, emergencyMode:false,
   err:{}, toast:null, sheet:null, pin:"", pinTries:0, confirmRemove:null, regPw:"", beacon:null, tamper:null, bgRef:null, bgResult:null,
-  walk:null, live:null, fake:null, calc:"0", inDanger:null
+  walk:null, live:null, fake:null, calc:"0", inDanger:null, reqCounsellor:null, thread:null, counsellors:null
 };
 let tamperTimer;
 function go(screen){ S.screen = screen; S.err = {}; S.sheet = null; render(); $("screen").scrollTop = 0; }
@@ -650,6 +701,8 @@ function startRing(){
   }catch(_){}
 }
 function stopRing(){ clearInterval(ringTimer); try{ navigator.vibrate && navigator.vibrate(0); }catch(_){} }
+function handleGen(){ const a=["Brave","Kind","Quiet","Hopeful","Strong","Gentle","Caring","Steady"]; const n=["Protea","Springbok","Aloe","Jacaranda","Impala","Kudu","Sunbird","Marula"]; return a[Math.floor(Math.random()*a.length)]+" "+n[Math.floor(Math.random()*n.length)]; }
+function timeAgo(t){ const s=Math.floor((Date.now()-t)/1000); if(s<60) return "just now"; const m=Math.floor(s/60); if(m<60) return m+" min ago"; const h=Math.floor(m/60); if(h<24) return h+" h ago"; const d=Math.floor(h/24); return d+" day"+(d>1?"s":"")+" ago"; }
 function startFakeCall(delay){
   const names=["Mom","Dad","Thabo","Aunty","Boss","Unknown"]; const name=names[Math.floor(Math.random()*names.length)];
   clearTimeout(fakeTimer);
@@ -800,6 +853,8 @@ const screens = {
       <button class="tile" data-act="go" data-v="safewalk"><b>Safe walk</b><span>Timed check-in home</span></button>
       <button class="tile" data-act="go" data-v="areasafety"><b>Area safety</b><span>Danger zones, cases</span></button>
       <button class="tile" data-act="go" data-v="livelocation"><b>Live location</b><span>Share for a set time</span></button>
+      <button class="tile" data-act="go" data-v="counsellors"><b>Counsellors</b><span>Talk to someone</span></button>
+      <button class="tile" data-act="go" data-v="community"><b>Community</b><span>Anonymous support</span></button>
       <button class="tile" data-act="go" data-v="disguise"><b>Disguise & escape</b><span>Fake call, decoy</span></button>
       <button class="tile" data-act="go" data-v="resources"><b>Help & resources</b><span>SA helplines, nearby</span></button>
       <button class="tile" data-act="go" data-v="contacts"><b>Trusted contacts</b><span>Who gets your alert</span></button>
@@ -1033,6 +1088,58 @@ const screens = {
     <p style="font-size:12px;color:var(--muted)">Zones and cases come from anonymised TechNov alerts and public crime data. They show patterns, never a specific person.</p>
     <button class="btn ghost" data-act="${z?"leaveDanger":"enterDanger"}">${z?"Simulate leaving the area":"Simulate walking into a danger zone"}</button>`;
   },
+  counsellors(){
+    const list = S.counsellors || [];
+    return `
+    <button class="back" data-act="go" data-v="home">‹ Home</button>
+    <h2>Talk to a counsellor</h2>
+    <p class="lead">Trained counsellors you can reach out to privately. You can stay anonymous.</p>
+    <div class="list" id="couns-list">${list.length ? list.map(counsellorRow).join("") : `<div class="item"><span class="s">Loading…</span></div>`}</div>
+    <p style="font-size:12px;color:var(--muted)">In immediate danger? Call 10111 or 112, or open Help & resources.</p>`;
+  },
+  counsellorRequest(){
+    const c = (S.counsellors||[]).find(x=>x.id===S.reqCounsellor);
+    if(!c) return `<button class="back" data-act="go" data-v="counsellors">‹ Back</button><p class="lead">Choose a counsellor to reach out to.</p>`;
+    return `
+    <button class="back" data-act="go" data-v="counsellors">‹ Back</button>
+    <h2>Reach out to ${esc(c.name)}</h2>
+    <p class="lead">${esc(c.specialty)} · ${esc(c.org)} · ${esc(c.avail)}</p>
+    <form id="f-couns" class="stack" novalidate>
+      <div class="field"><label for="cr-note">What would you like help with? (optional)</label><textarea id="cr-note" rows="4" style="border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:10px;font:inherit;color:inherit;resize:vertical"></textarea></div>
+      <label class="row" style="font-size:12.5px"><input type="checkbox" id="cr-anon" checked> <span>Send anonymously — they won't see your name or number</span></label>
+      <button class="btn" type="submit">Send request</button>
+    </form>`;
+  },
+  community(){
+    return `
+    <button class="back" data-act="go" data-v="home">‹ Home</button>
+    <h2>Community</h2>
+    <p class="lead">A safe, anonymous space to ask for advice and support one another. Be kind.</p>
+    <form id="f-post" class="stack" novalidate>
+      <div class="field"><select id="po-topic"><option>Need advice</option><option>Safety tips</option><option>Support</option><option>My story</option></select></div>
+      <div class="field"><textarea id="po-text" rows="3" placeholder="Share something or ask for advice… posted anonymously" style="border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:10px;font:inherit;color:inherit;resize:vertical"></textarea></div>
+      <button class="btn" type="submit">Post anonymously</button>
+    </form>
+    <div class="list" id="comm-list"><div class="item"><span class="s">Loading…</span></div></div>
+    <p style="font-size:12px;color:var(--muted)">Posts are anonymous. If you're in danger, call 10111 or 112. Be respectful — abusive posts can be reported.</p>`;
+  },
+  communityThread(){
+    const p = db.community.find(x=>x.id===S.thread);
+    if(!p) return `<button class="back" data-act="go" data-v="community">‹ Back</button><p class="lead">This post is no longer available.</p>`;
+    return `
+    <button class="back" data-act="go" data-v="community">‹ Community</button>
+    <div class="panel" style="padding:14px">
+      <div class="row" style="justify-content:space-between"><b>${esc(p.handle)}</b><span class="tag mut">${esc(p.topic)}</span></div>
+      <p style="margin:6px 0 0">${esc(p.text)}</p>
+      <div class="s" style="margin-top:8px">${timeAgo(p.at)} · ${p.hearts} ❤ · <button class="back" style="padding:0;color:var(--brand)" data-act="heart" data-v="${p.id}">Send support</button></div>
+    </div>
+    <b style="font-family:var(--f-display)">Replies</b>
+    <div class="list">${p.replies.length ? p.replies.map(r=>`<div class="item"><div style="min-width:0"><div class="t">${esc(r.handle)}</div><div class="s">${esc(r.text)}</div><div class="s">${timeAgo(r.at)}</div></div></div>`).join("") : `<div class="item"><span class="s">No replies yet. Be the first to offer support.</span></div>`}</div>
+    <form id="f-reply" class="stack" novalidate>
+      <div class="field"><textarea id="rp-text" rows="2" placeholder="Offer advice or support… anonymous" style="border:1px solid var(--line);background:var(--surface-2);border-radius:10px;padding:10px;font:inherit;color:inherit;resize:vertical"></textarea></div>
+      <button class="btn" type="submit">Reply anonymously</button>
+    </form>`;
+  },
   consoleAdmin(){
     return consoleHead("Admin console", S.session.user, ["Manage user accounts (never their passwords)","Alert metadata — no location, no recordings","Open a recording only with a logged break-glass reason"]) + `
     <div class="lbl2">Users</div>
@@ -1058,9 +1165,18 @@ const screens = {
     <div class="lbl2">Deletion requests</div>
     <div class="list" id="cons-del"><div class="item"><span class="s">Loading…</span></div></div>
     <button class="btn" data-act="logout">Sign out</button>`;
+  },
+  consoleCounsellor(){
+    return consoleHead("Counsellor console", S.session.user, ["Receive support requests sent to you","See only what the person chose to share","Accept a request to begin a conversation"]) + `
+    <div class="lbl2">Incoming support requests</div>
+    <div class="list" id="cons-reqs"><div class="item"><span class="s">Loading…</span></div></div>
+    <button class="btn" data-act="logout">Sign out</button>`;
   }
 };
 
+function counsellorRow(c){
+  return `<div class="item"><div style="min-width:0"><div class="t">${esc(c.name)}</div><div class="s">${esc(c.specialty)} · ${esc(c.org)}</div><div class="s">${esc(c.avail)} · ${esc(c.dist)}</div></div><button class="btn" style="padding:8px 12px" data-act="reqCouns" data-v="${c.id}">Reach out</button></div>`;
+}
 function consoleHead(title, u, privs){
   return `
   <div class="status-head" style="background:var(--brand);color:var(--brand-ink)">
@@ -1158,6 +1274,26 @@ function render(){
   $("netbar").innerHTML = `<span class="dot ${n[0]}"></span>${n[1]}`;
   if(S.screen==="history") loadHistory();
   if(S.screen && S.screen.indexOf("console")===0) loadConsole();
+  if(S.screen==="counsellors") loadCounsellors();
+  if(S.screen==="community") loadCommunity();
+}
+
+async function loadCounsellors(){
+  if(loadCounsellors.busy || !S.session) return; loadCounsellors.busy = true;
+  try{
+    S.counsellors = await api.listCounsellors(S.session.token);
+    const el = $("couns-list"); if(el) el.innerHTML = S.counsellors.map(counsellorRow).join("");
+  }catch(e){ if(e.status===401) return expire(); }
+  finally{ loadCounsellors.busy = false; }
+}
+async function loadCommunity(){
+  if(loadCommunity.busy || !S.session) return; loadCommunity.busy = true;
+  try{
+    const posts = await api.listCommunity(S.session.token);
+    const el = $("comm-list");
+    if(el) el.innerHTML = posts.length ? posts.map(p=>`<div class="item"><div style="min-width:0"><div class="row" style="gap:8px"><b style="font-size:13px">${esc(p.handle)}</b><span class="tag mut">${esc(p.topic)}</span></div><div class="s" style="margin-top:3px">${esc(p.text.length>110?p.text.slice(0,110)+"…":p.text)}</div><div class="s" style="margin-top:4px">${timeAgo(p.at)} · ${p.hearts} ❤ · ${p.replies} repl${p.replies===1?"y":"ies"}</div></div><button class="btn ghost" style="padding:7px 10px" data-act="openThread" data-v="${p.id}">Open</button></div>`).join("") : `<div class="item"><span class="s">No posts yet. Start the conversation.</span></div>`;
+  }catch(e){ if(e.status===401) return expire(); }
+  finally{ loadCommunity.busy = false; }
 }
 
 async function loadConsole(){
@@ -1174,6 +1310,10 @@ async function loadConsole(){
       const rows = await api.responderQueue(t);
       const rb = $("cons-routed");
       if(rb) rb.innerHTML = rows.length ? rows.map(a=>`<div class="item"><div style="min-width:0"><div class="t" style="font-family:var(--f-mono);font-size:12.5px">${esc(a.ref)}</div><div class="s">${a.lat.toFixed(4)}, ${a.lng.toFixed(4)} · ${esc(a.status)}</div></div><button class="btn ghost" style="padding:7px 10px" data-act="askBG" data-v="${esc(a.ref)}">Recording</button></div>`).join("") : `<div class="item"><span class="s">No active alerts are routed to you right now.</span></div>`;
+    } else if(role==="counsellor"){
+      const reqs = await api.counsellorQueue(t);
+      const rb = $("cons-reqs");
+      if(rb) rb.innerHTML = reqs.length ? reqs.map(r=>`<div class="item"><div style="min-width:0"><div class="t">${esc(r.from)} ${r.anon?'<span class="tag mut">anonymous</span>':""}</div><div class="s">${r.note?esc(r.note):"<i>No message left</i>"}</div><div class="s">${esc(r.at)}</div></div>${r.status==="new"?`<button class="btn ghost" style="padding:7px 10px" data-act="respondReq" data-v="${r.id}">Accept</button>`:`<span class="tag ok">accepted</span>`}</div>`).join("") : `<div class="item"><span class="s">No requests yet.</span></div>`;
     } else if(role==="dpo"){
       const [audit0, priv, dels] = [await api.dpoReadAudit(t), await api.dpoPrivileged(t), await api.dpoDeletions(t)];
       const pb = $("cons-priv");
@@ -1297,6 +1437,10 @@ const actions = {
   },
   enterDanger(){ const z=DANGER_ZONES[0]; S.inDanger=z; try{ navigator.vibrate && navigator.vibrate(300); }catch(_){} go("areasafety"); toast(`⚠ Entering ${z.level}-risk area: ${z.note}`); },
   leaveDanger(){ S.inDanger=null; go("areasafety"); toast("You've left the danger zone."); },
+  reqCouns(d){ S.reqCounsellor = +d.v; go("counsellorRequest"); },
+  async respondReq(d){ try{ await api.counsellorRespond(S.session.token, d.v); render(); toast("Request accepted. You can reach out to them now."); }catch(e){ if(e.status===401) return expire(); toast(e.message); } },
+  openThread(d){ S.thread = d.v; go("communityThread"); },
+  async heart(d){ try{ await api.heartCommunity(S.session.token, d.v); render(); }catch(e){ if(e.status===401) return expire(); } },
   async net(d){
     const prev = S.net; S.net = d.v;
     document.querySelectorAll("#netseg button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.v===d.v));
@@ -1498,7 +1642,7 @@ async function afterLogin(r){
   if(r.user.role!=="user"){
     // Staff accounts are routed into their backend console, with only their role's privileges.
     S.contacts = [];
-    go(r.user.role==="admin" ? "consoleAdmin" : r.user.role==="responder" ? "consoleResponder" : "consoleDpo");
+    go(r.user.role==="admin" ? "consoleAdmin" : r.user.role==="responder" ? "consoleResponder" : r.user.role==="counsellor" ? "consoleCounsellor" : "consoleDpo");
     renderInspector();
     return;
   }
@@ -1579,6 +1723,26 @@ document.addEventListener("submit", async e=>{
     go("livelocation"); toast(`Sharing your live location with ${c?c.name:"your contact"}.`);
     return;
   }
+  if(id==="f-couns"){
+    const note = v("cr-note"), anon = $("cr-anon").checked;
+    try{ await api.requestCounsellor(S.session.token, S.reqCounsellor, note, anon); go("counsellors"); toast("Your request was sent. They'll reach out soon."); }
+    catch(err){ if(err.status===401) return expire(); toast(err.message); }
+    return;
+  }
+  if(id==="f-post"){
+    const text = v("po-text"), topic = $("po-topic").value;
+    if(text.length<3){ toast("Write a little more before posting."); return; }
+    try{ await api.postCommunity(S.session.token, {topic, text}); e.target.reset(); render(); toast("Posted anonymously."); }
+    catch(err){ if(err.status===401) return expire(); }
+    return;
+  }
+  if(id==="f-reply"){
+    const text = v("rp-text");
+    if(text.length<2){ toast("Write a short reply first."); return; }
+    try{ await api.replyCommunity(S.session.token, S.thread, text); render(); toast("Reply added."); }
+    catch(err){ if(err.status===401) return expire(); }
+    return;
+  }
 });
 
 /* ---------- seed & timers ---------- */
@@ -1594,6 +1758,15 @@ const SHARE_ACTIVE = "SHARE-7F3A", SHARE_DONE = "SHARE-DONE-22";
   await mk("TechNov Admin","admin@technov.co.za","Admin@2026","admin","9021");
   const responder = await mk("ER24 Dispatcher","dispatch@er24.demo","Dispatch@2026","responder","1122");
   await mk("Data Protection Officer","dpo@technov.co.za","Dpo@2026","dpo","3344");
+  const mkC = async (name,email,prof) => { const u = await mk(name,email,"Counsel@2026","counsellor","1212"); u.profile = prof; return u; };
+  await mkC("Nomsa Dlamini","nomsa@tears.demo",{specialty:"GBV & trauma support", org:"TEARS Foundation", avail:"Mon–Fri, 08:00–20:00", dist:"2 km away"});
+  await mkC("Sipho Khumalo","sipho@childline.demo",{specialty:"Youth, abuse & family", org:"Childline SA", avail:"24/7", dist:"Online"});
+  await mkC("Dr Ayesha Patel","ayesha@sadag.demo",{specialty:"Counselling psychologist", org:"SADAG", avail:"By appointment", dist:"5 km away"});
+  db.community.push(
+    {id:"p1", handle:"Brave Protea", topic:"Safety tips", text:"I always share my live location with my sister when I take a late taxi. Small thing, but it helps me feel safer.", at:Date.now()-5*3600e3, hearts:12, replies:[{handle:"Kind Aloe", text:"Thank you for this, setting it up tonight.", at:Date.now()-4*3600e3}]},
+    {id:"p2", handle:"Quiet Springbok", topic:"Need advice", text:"How do you deal with a neighbour who makes you uncomfortable? I don't want trouble but I feel unsafe walking past.", at:Date.now()-20*3600e3, hearts:5, replies:[{handle:"Strong Kudu", text:"Trust that feeling. Vary your route, tell someone you trust, and you can report it even without opening a case.", at:Date.now()-18*3600e3},{handle:"Gentle Sunbird", text:"You're not overreacting. Sending strength.", at:Date.now()-17*3600e3}]},
+    {id:"p3", handle:"Hopeful Jacaranda", topic:"My story", text:"Left a bad situation two months ago. It's hard, but I'm okay today. To anyone scared to leave: you're stronger than you think.", at:Date.now()-30*3600e3, hearts:28, replies:[]}
+  );
   db.contacts.push({id:"c90",userId:lerato.id,name:"Nomsa (Mom)",phone:"0721234567",relationship:"Mother",method:"SMS",alerts:true});
   db.contacts.push({id:"c91",userId:lerato.id,name:"Sipho",phone:"0839876543",relationship:"Brother",method:"Push",alerts:true});
   db.alerts.push({id:THANDI_REF, userId:thandi.id, at:new Date("2026-10-24T21:14:00+02:00").getTime(), status:"cancelled", lat:-25.7536, lng:28.2311, shareToken:SHARE_DONE});

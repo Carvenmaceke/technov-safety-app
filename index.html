@@ -296,7 +296,7 @@ const api = {
     return {ok:true};
   },
   async login(email, password){
-    await sleep(300);
+    await sleep(80);
     email = email.trim().toLowerCase();
     const u = db.users.find(x=>x.email===email);
     const generic = "Email or password is incorrect.";
@@ -739,7 +739,7 @@ async function triggerSOS(){
 
   if(S.net==="online"){
     try{
-      await sleep(500);
+      await sleep(180);
       if(S.session) await api.createAlert(S.session.token, payload); else await api.emergencyAlert(S.device.key, payload);
       alert.synced = true; alert.log.push({t:Date.now(), m:"Alert saved on TechNov server over HTTPS"});
       alert.recipients.forEach(r=>deliver(alert, r));
@@ -790,6 +790,10 @@ const screens = {
            :`<div style="font-size:12px;color:var(--muted)">Works right away. To make sure your alert reaches someone, sign in once and add trusted contacts.</div>`}
       <button class="btn" data-act="go" data-v="register">Create account</button>
       <button class="btn ghost" data-act="go" data-v="login">Sign in</button>
+      <div style="margin-top:4px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Demo — tap a role to jump straight in</div>
+        <div class="seg">${DEMO_ACCOUNTS.map(a=>`<button type="button" data-act="quicklogin" data-v="${a.email}">${esc(a.label)}</button>`).join("")}</div>
+      </div>
       <button class="back" data-act="go" data-v="demoinfo" style="align-self:center">About this demo</button>
     </div>`;
   },
